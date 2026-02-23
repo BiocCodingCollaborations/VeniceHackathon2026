@@ -1,6 +1,6 @@
 # Hackathon on spatial omics <br> and image-derived data
 
-- 19-23 April, 2026
+- 19-22 April, 2026
 - [San Servolo, Italy](https://servizimetropolitani.ve.it/en/san-servolo-island/where-we-are)
 
 #### Useful links
