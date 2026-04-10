@@ -5,9 +5,10 @@ format:
   html:
     embed-resources: true
     self_contained: true
-    code_folding: show
-    toc_float: true
-    toc_depth: 2
+    code-folding: show
+    toc-float: true
+    toc-depth: 2
+    toc: true
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 ---
 
