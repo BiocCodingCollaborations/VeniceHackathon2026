@@ -225,7 +225,7 @@ unzip(pa, exdir=td)
 - from [Crowell et al.](http://doi.org/10.1101/2025.06.23.660674)
 - human colorectal cancer (CRC) sections
 - low- and high-resolution cell type annotations
-- histopathological region annotataions: healthy, pre- and malignant
+- histopathological annotations: healthy, pre- and malignant
 - data is available as .rds (SCE), .h5ad, and `alabaster` artifacts
 
 ```{r cox-wtx}
