@@ -1,8 +1,8 @@
 ---
 title: "Example datasets"
 author: Helena L. Crowell
-output:
-  html_document:
+format:
+  html:
     embed-resources: true
     self_contained: true
     code_folding: show
