@@ -222,7 +222,7 @@ unzip(pa, exdir=td)
 
 ## 18k-plex
 
-- from [Crowell et al.](http://doi.org/10.1101/2025.06.23.660674)
+- from [Crowell et al. (2025)](http://doi.org/10.1101/2025.06.23.660674)
 - human colorectal cancer (CRC) sections
 - low- and high-resolution cell type annotations
 - histopathological annotations: healthy, pre- and malignant
