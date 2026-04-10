@@ -51,12 +51,12 @@ plt <- \(o, i, s=2/3) {
     if (i %in% rownames(o)) df[[i]] <- log1p(assay(o)[i, ])
     th <- if (is.numeric(df[[i]])) {
         list(
-            scale_color_gradientn(colors=qal),
             theme(legend.key.width=unit(0.4, "lines")),
-            theme(legend.key.height=unit(0.8, "lines")))
+            theme(legend.key.height=unit(0.8, "lines")),
+            scale_color_gradientn(colors=qal, na.value="grey90"))
     } else list(
-        scale_color_manual(values=pal),
         theme(legend.key.size=unit(0, "lines")),
+        scale_color_manual(values=pal, na.value="grey90"),
         guides(col=guide_legend(override.aes=list(size=2))))
     ggplot(df, aes(x, y, col=.data[[i]])) +
         coord_equal() + theme_void() + th +
@@ -255,6 +255,44 @@ plt(spe, "lv1", s=1/5) + scale_color_manual(
     values=c("gold", "turquoise", "deeppink")) +
 plt(spe, "typ", s=1/5) + scale_color_manual(
     values=c("tomato", "seagreen", "dodgerblue", "royalblue", "slateblue")) 
+```
+
+## tonsil
+
+- from [Crowell et al. (2025)](http://dx.doi.org/10.1002/eji.70121)
+- 3 human tonsil sections (1 child, 2 adult)
+- low- and high-resolution cell type annotations
+- annotated regions of interest (ROIs): germinal centers, epithelium
+- ROIs were identifier programmatically using `r BiocStyle::Biocpkg("sosta")`
+
+```{r cos-slo}
+# for other sections & data formats, see 
+# https://zenodo.org/records/16782547
+
+# retrieval
+options(timeout=1e3)
+url <- "https://zenodo.org/records/16782547/files/C1.zip"
+tf <- tempfile(fileext=".zip")
+download.file(url, tf)
+# decompression
+pa <- dirname(tf)
+unzip(tf, exdir=pa)
+# importing
+library(alabaster.sce)
+nm <- file.path(pa, "C1")
+sce <- readObject(nm)
+# coersion
+xy <- sprintf("Center%s_global_mm", c("X", "Y"))
+xy <- as.matrix(colData(sce)[xy])
+(spe <- toSpatialExperiment(sce, spatialCoords=xy))
+```
+
+```{r plt-slo, fig.width=12, fig.height=8}
+roi <- as.character(spe$gcs); roi[.] <- as.character(spe$epi[. <- !is.na(spe$epi)])
+spe$roi <- roi; col <- colorRampPalette(pal)(length(unique(spe$roi)))
+plt(spe, "lv1") + plt(spe, "roi") + 
+    theme(legend.position="none") +
+    scale_color_manual(values=col, na.value="grey95") 
 ```
 
 :::
