@@ -5,6 +5,7 @@
 
 #### Useful links
 
+- [example datasets](https://htmlpreview.github.io/?https://github.com/BiocCodingCollaborations/VeniceHackathon2026/blob/main/code/datasets.html)
 - [Hackathon GitHub project board](https://github.com/orgs/BiocCodingCollaborations/projects/1)
 - [Bioconductor contributor guidelines](https://contributions.bioconductor.org/)
 
