@@ -12,3 +12,8 @@ This is my repository of tryings:
 2. gitlab: <https://git.embl.org/kharuk/spatialproteomics_ml>
 
 To access KRONOS and DINOv3 you have to request an access on HuggingFace, and the authors have to approve it, usually it takes from hours to days, I recommend you to do this before: https://huggingface.co/settings/gated-repos 
+
+Artur:
+
+- An implementation of SuperPoint in R:
+  https://github.com/dominik-sagebiel/feature-matching-benchmark.git
