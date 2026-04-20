@@ -5,20 +5,18 @@
 
 #### Useful links
 
+- [example datasets](https://htmlpreview.github.io/?https://github.com/BiocCodingCollaborations/VeniceHackathon2026/blob/main/code/datasets.html)
 - [Hackathon GitHub project board](https://github.com/orgs/BiocCodingCollaborations/projects/1)
 - [Bioconductor contributor guidelines](https://contributions.bioconductor.org/)
 
 #### Tentative schedule
 
 - **Sun 19**
-  - 15:00-17:00 Arrival, check-in
-  - 17:00-18:00 Introductions
-  - 18:00-20:00 Welcome reception
-  - 20:00-21:30 Dinner
+  - 15:00-17:30 Arrival, check-in
+  - 17:30-18:00 Introductions
+  - 18:00-20:00 Welcome reception with light dinner and drinks
 - **Mon 20**
-  - 08:30-09:00 Introduction, logistics
-  - 09:00-09:30 State of spatial data analysis in Bioconductor
-  - 09:30-10:30 Introduction to project goals, group formation
+  - 09:00-10:30 Introduction to project goals, group formation
   - 10:30-11:00 Coffee break
   - 11:00-12:30 Session A
   - 12:30-14:00 Lunch
@@ -28,8 +26,8 @@
   - 17:30-19:30 Free time
   - 19:30-21:00 Dinner
 - **Tue 21**
-  - 08:30-09:00 Plenary meeting, set-up goals
-  - 09:00-10:30 Session A
+  - 09:00-09:30 Plenary meeting, set-up goals
+  - 09:30-10:30 Session A
   - 10:30-11:00 Coffee break
   - 11:00-12:30 Session B
   - 12:30-14:00 Lunch
@@ -39,9 +37,11 @@
   - 17:30-19:30 Free time
   - 19:30-21:00 Dinner
 - **Wed 22**
-  - 08:30-09:00 Plenary meeting, set-up goals
+  - 09:00-09:30 Plenary meeting, set-up goals
   - 09:00-10:30 Session A
   - 10:30-11:00 Coffee break
   - 11:00-12:30 Session B
   - 12:30-14:00 Lunch
   - 14:00-15:30 Closing remarks
+  - 15:30-16:00 Afternoon break
+  - 16:00-17:30 (Optional) session
