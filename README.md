@@ -33,5 +33,12 @@ Next steps:
 - Compare that to: read all in memory and using sf to subset.
 - Plot
 
+## Day 2
+
+## Cropping image
+
+- We successfully read a huge image in both OME-TIFF and Zarr format, without loading it in memory.
+- We are able to crop a small region and plot the cropped image.
+
 
 
