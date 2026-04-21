@@ -1,14 +1,13 @@
+from pathlib import Path
 import json
 
 import geopandas as gpd
 
-with open(
-    "data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.geojson",
-    encoding="utf-8",
-) as f:
-    features = json.load(f)
+for geojson_file in Path("data").glob("*.geojson"):
+    with open(geojson_file, encoding="utf-8") as f:
+        features = json.load(f)
 
-gdf = gpd.GeoDataFrame.from_features(features)
-gdf.to_parquet(
-    "data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.parquet"
-)
+    gdf = gpd.GeoDataFrame.from_features(features)
+    gdf.to_parquet(geojson_file.with_suffix(".parquet"))
+
+    print("Finished:", geojson_file.with_suffix(".parquet").name)
