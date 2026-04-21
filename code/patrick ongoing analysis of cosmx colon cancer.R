@@ -132,32 +132,171 @@ dist2tcell <- FNN::get.knnx(
 
 #### define patches ------------------------------------------------------
 
-#source(url("https://raw.githubusercontent.com/Nanostring-Biostats/CosMx-Analysis-Scratch-Space/refs/heads/Main/_code/PatchDE/DEutils.R"))
-source(url("https://raw.githubusercontent.com/mcalgaro93/SpatialStratifiedDE/refs/heads/debug-getPatches/code/patchDE.R"))
+source(url("https://raw.githubusercontent.com/Nanostring-Biostats/CosMx-Analysis-Scratch-Space/refs/heads/Main/_code/PatchDE/DEutils.R"))
+#source(url("https://raw.githubusercontent.com/mcalgaro93/SpatialStratifiedDE/refs/heads/debug-getPatches/code/patchDE.R"))
 
 # only use tumor cells kinda near T-cells:
 use <- inds.tumor & (dist2tcell < 0.1)
 
 patches <- getPatches(xy = xy[use, ], 
                       X = dist2tcell[use], 
-                      npatches = 1500,
+                      npatches = 500,
                       bitesize = 0.025,
                       maxradius = 0.2,
                       roundness = 0.25,
                       initwithhotspots = TRUE,
-                      n_iters = 25,
+                      n_iters = 5,
                       plotprogress = FALSE
 ) # produces a vector of patch assigments, potentially including NA's for cells not given a patch
-saveRDS(patches, file = "processed/patches1500.RDS")
-
+#saveRDS(patches, file = "processed/patches1000.RDS")
+patches <- readRDS("processed/patches500.RDS")
 
 plot(xy[use, ], pch = 16, cex = 0.1, col = "grey80")
 points(xy[use, ], pch = 16, cex = 0.1, col = rep(cellcols,100)[as.numeric(as.factor(patches))])
 
+# subcluster each patch to make it small?
 
-####  run DE  -----------------------------------------------------
+####  run DE: -----------------------------------------------------
 
-res <- patchDE(y = norm[use, ],
+# find genes useful in cancer:
+set.seed(0)
+sampletumor <- sample(which(inds.tumor), 1000)
+meanincancer <- Matrix::colMeans(counts[sampletumor, ])
+cancergenes <- meanincancer > 0.2
+table(cancergenes)
+
+# run DE:
+res <- patchDE(y = norm[use, ], #[, cancergenes],
                df = data.frame("dist2tcell" = dist2tcell[use]),
                patch = patches)
 str(res)
+saveRDS(res, file = "processed/res500.RDS")
+
+res <- readRDS("processed/res500.RDS")
+
+#### get summary stats: ------------------------------------------
+
+res <- res$dist2tcell
+for (name in names(res)) {
+  res[[name]] <- res[[name]][cancergenes, ]
+}
+str(res)
+
+## get high-level DE results matrix:
+meanhere <- Matrix::colMeans(norm[use, cancergenes])
+de <- res$est * (res$p < 0.05) / meanhere
+de[is.na(de)] <- 0
+
+# tstats:
+ts <- res$ests / replace(res$ses, (is.na(res$ses) | (res$ses == 0)), 1e6)
+
+
+nhits <- rowSums(de != 0)
+posrate <- rowSums(de > 0) / rowSums(de != 0)
+consistent <- abs(posrate - 0.5) > 0.15
+
+# meta analysis:
+#metawts <- replace(res$ses, is.na(res$ses), 1e6)^-1/2
+metawts <- pmax(res$ses, 0.1)^-1/2
+metaest <- rowSums(res$est * metawts, na.rm = T) / rowSums(metawts, na.rm = T)
+metaSE <- sqrt(1 / rowSums(metawts))
+metaZ <- metaest / metaSE
+consistent <- abs(metaZ) > 2
+
+pheatmap::pheatmap(de[consistent, ], col = colorRampPalette(c("blue", "white", "red"))(101),
+                   breaks = seq(-10,10,length.out=100))
+
+pheatmap::pheatmap(-ts[consistent, ], col = colorRampPalette(c("darkblue", "blue", "white", "red", "darkred"))(101),
+                   breaks = seq(-10,10,length.out=100))
+
+pheatmap::pheatmap(cor(t(de[consistent, ])), 
+                   col = colorRampPalette(c("blue", "white", "red"))(101),
+                   breaks = seq(-.5,.5,length.out=100))
+
+pheatmap::pheatmap(cor(de[consistent, ]), 
+                   col = colorRampPalette(c("blue", "white", "red"))(101),
+                   breaks = seq(-.5,.5,length.out=100))
+
+
+#### define "pZ" space: neighborhood context of patches: ---------------------
+
+# find HVG's:
+# recommend nfeatures = 3000 for WTX, 2000 for 6k panel, and using all features for 1k panels
+if (FALSE ){
+  seu <- Seurat::CreateSeuratObject(counts = Matrix::t(counts),
+                                    meta.data = metadata)
+  seu <- Seurat::FindVariableFeatures(seu, nfeatures = 3000) 
+  hvgs <- setdiff(seu@assays$RNA@meta.data$var.features, NA)
+  saveRDS(hvgs, file = paste0("processed/hvgs.RDS"))
+} else {
+  hvgs <- readRDS(paste0("processed/hvgs.RDS"))
+}
+
+# get PCs:
+if (FALSE) {
+  genefreq <- scPearsonPCA::gene_frequency(Matrix::t(counts)) ## gene frequency (across all cells)
+  pcaobj <- scPearsonPCA::sparse_quasipoisson_pca_seurat(
+    x = Matrix::t(counts[, hvgs]),
+    totalcounts = metadata$nCount_RNA,
+    grate = genefreq[hvgs],
+    scale.max = 10, ## PC's reflect clipping pearson residuals > 10 SDs above the mean pearson residual
+    do.scale = TRUE, ## PC's reflect as if pearson residuals for each gene were scaled to have standard deviation=1
+    do.center = TRUE ## PC's reflect as if pearson residuals for each gene were centered to have mean=0
+  )
+  saveRDS(pcaobj, file = paste0("processed/pcaobj.RDS"))
+} else {
+  pcaobj <- readRDS(paste0("processed/pcaobj.RDS"))
+}
+
+## summarize neighborhood PCA values: (just take the mean and variance for now):
+
+# single cell neighborhood embedding:
+Z <- cbind(
+  # mean cell PCs in the neighborhood:
+  InSituCor:::neighbor_colMeans(pcaobj$reduction.data@cell.embeddings[, 1:20], neighbors),
+  # mean of squared cell PCs in the neighborhood (scaled)
+  0.1 * InSituCor:::neighbor_colMeans(pcaobj$reduction.data@cell.embeddings[, 1:20]^2, neighbors)
+)
+Z <- as.matrix(Z)
+
+# mean embedding values per patch:
+mz <- c()
+patchnames <- setdiff(unique(patches), NA)
+for (patch in patchnames) {
+  inds <- (patches == patch) & !is.na(patches)
+  mz <- rbind(mz, colMeans(Z[use, ][inds, ], na.rm = T))
+  if (is.na(mz[1])) {print(patch)}
+}
+rownames(mz) <- patchnames
+
+pheatmap::pheatmap(mz)
+
+## get umap projection and nearest neighbors network:
+umapobj <- uwot::umap(mz, ret_nn = TRUE)
+um <- umapobj$embedding  # umap projection
+zn <- umapobj$nn$euclidean        # nearest neighbors network   
+
+
+## run metaanalysis over each patch's neighbors (in per-patch mean Z space):
+dim(ts)
+str(zn)
+
+patchmetaZ <- c()
+metawts <- pmax(res$ses, 0.1)^-1/2
+for (patch in patchnames) {
+  
+  neighborpatches <- rownames(zn$idx)[zn$idx[patch, ]]
+  
+  metaest <- rowSums(res$est[, neighborpatches] * metawts[, neighborpatches], na.rm = T) / rowSums(metawts[, neighborpatches], na.rm = T)
+  metaSE <- sqrt(1 / rowSums(metawts[, neighborpatches]))
+  metaZ <- metaest / metaSE
+  
+  patchmetaZ <- rbind(patchmetaZ, metaZ)
+}
+rownames(patchmetaZ) <- patchnames
+
+# heatmap:
+pheatmap::pheatmap(replace(patchmetaZ, abs(patchmetaZ) < 2, 0), col = colorRampPalette(c("blue", "white", "red"))(101),
+                   breaks = seq(-10,10,length.out=101))
+
+
