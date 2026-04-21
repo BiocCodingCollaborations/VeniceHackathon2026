@@ -1,0 +1,20 @@
+name: hack
+channels:
+  - conda-forge
+dependencies:
+  - geojson
+  - geopandas
+  - numpy
+  - openslide
+  - conda-forge::openslide-python
+  - pandas
+  - pyarrow
+  - python=3.11
+  - tifffile
+  - pip:
+      - beautifulsoup4==4.14.3
+      - filelock==3.29.0
+      - gdown==6.0.0
+      - soupsieve==2.8.3
+      - tqdm==4.67.3
+      - typing_extensions==4.15.0
