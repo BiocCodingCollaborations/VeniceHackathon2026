@@ -39,6 +39,16 @@ Next steps:
 
 - We successfully read a huge image in both OME-TIFF and Zarr format, without loading it in memory.
 - We are able to crop a small region and plot the cropped image.
+- We are able to subset a geoparquet file with polygons, subset it out of memory and plot an overlay of the polygons and the image.
+- We learned that duckspatial can work with both GEOJSON and geoparquet but parquet is about 50x faster to pick 500 polygons from 300k.
+- We learned that we can use terra to easily work with huge images with lazy loading. This can be extended to working with zarr files with ZarrArray.
+- We have a prototype R function to compute simple statistics (area, mean intensity, etc), but it needs a mask (from the polygons).
 
+Next steps:
 
-
+- Apply the function on the small subset, rasterizing the polygons.
+- Apply this to the whole image using chunks.
+- For each chunk, read in the polygons, rasterize them, compute the stats.
+- Think about the "optimal" chunk geometry.
+- Think about polygons that are only partially in the window.
+- Ask Gemini to benchmark terra vs ImageArray
