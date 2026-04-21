@@ -1,0 +1,61 @@
+---
+title: "Lazy plotting of spatial data"
+format: html
+editor: visual
+---
+
+Functions to access and plot spatial data from `parquet` files as layz as possible.
+
+```{r}
+#| message: false
+library("duckdb")
+library("duckspatial")
+library("duckplyr")
+library("sf")
+library("ggplot2")
+```
+
+
+```{r}
+ddbs <- ddbs_open_dataset("~/Desktop/sdata_xenium_crop.zarr/shapes/cell_boundaries/shapes.parquet")
+bbox <- c(2200, 2500, 2700, 3000) # x0, x1, y0, y1
+
+f1 <- function() {
+    stbbox <- st_bbox(c(xmin = bbox[1], xmax = bbox[2],
+                        ymin = bbox[3], ymax = bbox[4]))
+    wkb_string <- st_as_text(st_as_sfc(stbbox))
+    ddbs |>
+        filter(ST_Intersects(ST_GeomFromText(wkb_string), geometry))
+}
+f2 <- function() {
+    sfbbox <- st_sf(geometry = st_as_sfc(st_bbox(c(xmin = bbox[1], xmax = bbox[2],
+                                                   ymin = bbox[3], ymax = bbox[4]))))
+    # cb_sel <- ddbs_filter(ddbs, sfbbox)
+    idx <- ddbs_intersects(ddbs, sfbbox) #
+    inner_join(x = ddbs |> mutate(id_x = row_number()),
+               y = idx, by = join_by(id_x))
+}
+bench::mark(f1(), f2(), check = FALSE)
+```
+
+```{r}
+stbbox <- st_bbox(c(xmin = bbox[1], xmax = bbox[2],
+                    ymin = bbox[3], ymax = bbox[4]))
+wkb_string <- st_as_text(st_as_sfc(stbbox))
+
+
+ggplot() +
+ geom_sf(data = ddbs |>
+          filter(ST_Intersects(ST_GeomFromText(wkb_string), geometry)) |>
+          st_as_sf()) +
+ geom_sf(data = st_as_sfc(stbbox), color = "navy",
+         linewidth = 1, fill = NA) +
+ labs(title = "Intersection with bounding box") +
+ theme_light()
+```
+
+
+```{r}
+sessionInfo()
+```
+
