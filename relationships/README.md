@@ -7,6 +7,8 @@
 > **This code is vibe-coded and not ready for production.**
 > The purpose is to explore a design and perform quick prototyping before a full implementation in the SpatialData ecosystem.
 
+Based on work from the Padua scverse hackathon: https://github.com/scverse/2026_04_hackathon_padua/issues/6.
+
 ---
 
 ## What this is
