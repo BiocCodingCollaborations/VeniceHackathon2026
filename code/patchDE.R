@@ -150,14 +150,18 @@ getPatches <- function(xy, X, npatches,
 
   # intialize patch df:
   uniqueseeds <- setdiff(seeds, NA)
-  patchdf <- data.frame(totvar = rep(NA, length(uniqueseeds)),
-                        hunger = rep(NA, length(uniqueseeds)))
+  ## for patches with fewer than 2 cells 'totvar' and 'hunger' will be zero
+  patchdf <- data.frame(totvar = rep(0, length(uniqueseeds)),
+                        hunger = rep(0, length(uniqueseeds)))
+  ## patchdf <- data.frame(totvar = rep(NA, length(uniqueseeds)),
+  ##                       hunger = rep(NA, length(uniqueseeds)))
   rownames(patchdf) = uniqueseeds
   
   # get patch centroids:
   centroids <- c()
   for (name in unique(seeds)) {
-    centroids <- rbind(centroids, colMeans(xy[(seeds == name) & !is.na(seeds), ]))
+    centroids <- rbind(centroids, colMeans(xy[(seeds == name) & !is.na(seeds), , drop=FALSE]))
+    ## centroids <- rbind(centroids, colMeans(xy[(seeds == name) & !is.na(seeds), ]))
   }
   rownames(centroids) = unique(seeds)
   
@@ -191,13 +195,21 @@ getPatches <- function(xy, X, npatches,
     
     # get patch stats:
     for (name in uniqueseeds) {
-      patchdf[name, "totvar"] <- var(celldf$X[celldf$patch == name], na.rm = T) * sum(celldf$patch == name, na.rm = T)
+      if (sum(celldf$patch == name, na.rm = TRUE) > 1) ## need at least 2 cells to get a variance estimate
+        patchdf[name, "totvar"] <- var(celldf$X[celldf$patch == name], na.rm = T) * sum(celldf$patch == name, na.rm = T)
     }
-    ## discard NA values from mean calculation
-    patchdf[, "hunger"] <- 1 / ((1 - alpha) * mean(patchdf[, "totvar"], na.rm=TRUE) + alpha * patchdf[, "totvar"])
+    ## discard NA values from mean calculation and guard against undefined mean and zero division
+    mean_totvar <- mean(patchdf[, "totvar"], na.rm=TRUE)
+    if (!is.finite(mean_totvar))
+      mean_totvar <- 0
+    hunger_denom <- (1 - alpha) * mean_totvar + alpha * patchdf[, "totvar"]
+    patchdf[, "hunger"] <- ifelse(is.finite(hunger_denom) & hunger_denom > 0,
+                                  1 / hunger_denom, 0)
     ## patchdf[, "hunger"] <- 1 / ((1 - alpha) * mean(patchdf[, "totvar"]) + alpha * patchdf[, "totvar"])
-    ## discard NA values from sum calculation
-    patchdf$hunger <- patchdf$hunger / sum(patchdf$hunger, na.rm=TRUE)
+    ## discard NA values from sum calculation and guard against zero division
+    total_hunger <- sum(patchdf$hunger, na.rm=TRUE)
+    if (is.finite(total_hunger) && total_hunger > 0)
+      patchdf$hunger <- patchdf$hunger / total_hunger
     ## patchdf$hunger <- patchdf$hunger / sum(patchdf$hunger)
     
     ## reduce patches to those with proximity info 
@@ -225,9 +237,9 @@ getPatches <- function(xy, X, npatches,
     cell2patchproximity <- getproximity2patch(xy, centroids, 
                                               patch = celldf$patch, 
                                               bitesize = bitesize, 
-                                              effectivezerodist, 
                                               maxradius = maxradius,
-                                              roundness = roundness)
+                                              roundness = roundness,
+                                              effectivezerodist = effectivezerodist)
     celldf$toofar <- Matrix::rowSums(cell2patchproximity != 0) == 0
 
     ## reduce patches to those with proximity info 
@@ -272,9 +284,9 @@ getproximity2patch <- function(xy, centroids, patch,
   centroiddistmat <- matrix(NA, nrow(xy), length(patchnames),
                             dimnames = list(rownames(xy), patchnames))
   for (name in patchnames) {
-    ## add small constant to prevent zero distances, which would result below in infinite proximities
-    edist <- sqrt((xy[, 1] - centroids[name, 1])^2 + (xy[, 2] - centroids[name, 2])^2) + 0.001
-    centroiddistmat[, name] <- edist
+    ## clamp distances to prevent zeros, which would result below in infinite proximities
+    edist <- sqrt((xy[, 1] - centroids[name, 1])^2 + (xy[, 2] - centroids[name, 2])^2)
+    centroiddistmat[, name] <- pmax(edist, effectivezerodist)
     ## centroiddistmat[, name] <- sqrt((xy[, 1] - centroids[name, 1])^2 + (xy[, 2] - centroids[name, 2])^2)
   }
   
