@@ -14,6 +14,7 @@ author:
   - name: Martin Emons
 output:
   BiocStyle::html_document
+self-contained: true
 vignette: |
   %\VignetteIndexEntry{SpatialData.plot}
   %\VignetteEngine{knitr::rmarkdown}
@@ -122,7 +123,16 @@ sce_obj <- anndataR::read_h5ad(h5ad_file, as = "SingleCellExperiment")
 ```
 
 ```{r}
-colData(tables(x)[[1]]) <- cbind(colData(tables(x)[[1]]), colData(sce_obj)[c("rctd_entropy", "rctd_singlet_scores")])
+library(dplyr)
+colData(tables(x)[[1]])$cell_id <- int_colData(tables(x)[[1]])$cell_id
+
+df1 <- colData(tables(x)[[1]]) |> as.data.frame()
+df2 <- colData(sce_obj)[c("cell_id","rctd_entropy", "rctd_singlet_scores")] |> as.data.frame()
+
+merged <- df2 |>
+  dplyr::left_join(df1, by = "cell_id")
+
+colData(tables(x)[[1]]) <- as(merged, "DataFrame")
 ```
 
 ## Plot results with `R` package `SpatialData.plot`
@@ -137,6 +147,15 @@ y <- x$points$transcripts
 y <- y |> dplyr::filter(feature_name  %in% c("EPCAM", "LUM"))
 # demo. viz. capabilities
 plotSpatialData() + 
+    plotShape(x, i = "cell_boundaries", fill = "transferred_celltype_plot", alpha = 1, linewidth = 0) + 
+    #scale_fill_viridis_c() +
+    scale_fill_manual(values=unname(pals::trubetskoy())) +
+    new_scale("fill") + 
+    plotShape(x, i = "nucleus_boundaries", color = "white", alpha = 0, linewidth = 0) + 
+    new_scale("fill") + 
+    plotPoint(y, colour = "feature_name", size = 0.3)
+
+  plotSpatialData() + 
     plotShape(x, i = "cell_boundaries", fill = "rctd_entropy", alpha = 1, linewidth = 0) + 
     scale_fill_viridis_c() +
     #scale_fill_manual(values=unname(pals::trubetskoy())) +
@@ -193,7 +212,9 @@ r <- plotSpatialData() +
 
 ```{r}
 library(patchwork)
-p/q/r
+p
+q
+r
 ```
 
 # Session info
