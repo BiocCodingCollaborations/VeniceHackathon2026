@@ -223,9 +223,9 @@ top_genes_names <- names(sort(abs(metaZ), decreasing = TRUE))[1:10]
 
 ### Global Summary (Volcano Plot)
 
-A volcano plot identifies genes with the most consistent spatial response. We highlight the top 10 most significant genes.
+A volcano plot identifies genes with the most consistent spatial response across all patches. The x-axis represents the weighted average effect size (meta-estimate), while the y-axis shows the statistical significance (-log10 meta p-value). Genes in the top-left or top-right corners are those that show a strong, consistent relationship with immune cell proximity across the tissue.
 
-```{r volcano}
+```{r volcano, fig.cap="Figure 1: Meta-analysis volcano plot. Red points indicate genes with a highly consistent spatial response (|Z| > 3)."}
 library(ggrepel)
 
 meta_df <- data.frame(
@@ -249,10 +249,11 @@ ggplot(meta_df, aes(x = estimate, y = logP, color = abs(zscore) > 3)) +
   theme(legend.position = "bottom")
 ```
 
-
 ### Patch-level Consistency (Heatmap)
 
-```{r heatmap}
+This heatmap displays the t-statistics for the top 30 most consistent genes across every individual patch. It allows us to verify if a "consistent" gene (from the meta-analysis) is truly showing a similar trend in every patch or if the global signal is driven by a few outlier regions.
+
+```{r heatmap, fig.cap="Figure 2: Heatmap of patch-level t-statistics for the top 30 consistent genes."}
 # Calculate t-statistics per patch
 t_stats <- res$ests / res$ses
 t_stats[is.na(t_stats)] <- 0
@@ -269,9 +270,9 @@ pheatmap(t_stats[top_consistent_genes, ],
 
 ### Specific Gene Inspection: `Egr1`
 
-The `Egr1` gene shows a promising spatial pattern in this context.
+The `Egr1` (Early Growth Response 1) gene is a known transcription factor involved in cellular responses to environmental stimuli. In our context, we are investigating if its expression in epithelial cells is modulated by the density of nearby immune cells.
 
-```{r egr1-spatial}
+```{r egr1-spatial, fig.cap="Figure 3: Spatial expression of Egr1 in epithelial cells (log-normalized counts)."}
 goi <- "Egr1"
 
 # Plot expression in space
@@ -291,9 +292,11 @@ ggplot(plot_df, aes(x = x, y = y, color = expression)) +
 
 ### Patch-level Aggregate Visualization
 
-Finally, we overlay the patch polygons colored by aggregated metrics for `Egr1`.
+By aggregating data at the patch level, we reduce noise and can clearly visualize the "spatial effect" (t-statistic) across the tissue architecture. 
 
-```{r patch-agg-viz}
+**Interpretation:** If `Egr1` is consistently upregulated in proximity to immune cells, we expect to see the majority of patches colored in red (positive t-statistic). If the effect is localized to specific tissue regions, only certain clusters of patches will show high values.
+
+```{r patch-agg-viz, fig.cap="Figure 4: Patch-level t-statistics for Egr1. Red indicates a positive correlation between Egr1 expression and immune proximity."}
 # Prepare aggregate data for Egr1
 patch_metrics <- data.frame(
   patch = colnames(res$ests),
@@ -319,3 +322,4 @@ ggplot(poly_df, aes(x = x, y = y, group = patch, fill = t_stat)) +
        fill = "T-statistic",
        x = "x (mm)", y = "y (mm)")
 ```
+
