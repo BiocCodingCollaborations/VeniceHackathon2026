@@ -33,6 +33,8 @@ library(SpatialData)
 library(arrow)
 library(SpatialData.plot)
 library(SingleCellExperiment)
+library(sosta)
+library(sf)
 ```
 
 # Introduction
@@ -56,7 +58,7 @@ st.run_baseline()
 st.sdata.write("xenium_with_qc.zarr", overwrite=True)
 ```
 
-## Run `R` module `spacexr``
+## Run `R` module `spacexr`
 
 With this object we then load the `SpatialData` object in R. We want to compute further metrics in `R` namely the `RCTD` algortihm implemented in `spacexr`.
 
@@ -114,7 +116,7 @@ adata$write_h5ad(
 we then merge the results into our `SpatialData` `SingleCellExperiment` object
 
 ```{r read SpatialData}
-(x <- readSpatialData("~/dev/VeniceHackathon/xenium_with_qc.zarr/", anndataR=TRUE))
+(x <- readSpatialData("xenium_with_qc.zarr", anndataR=TRUE))
 ```
 
 ```{r, read spacexrResults}
@@ -129,8 +131,8 @@ colData(tables(x)[[1]])$cell_id <- int_colData(tables(x)[[1]])$cell_id
 df1 <- colData(tables(x)[[1]]) |> as.data.frame()
 df2 <- colData(sce_obj)[c("cell_id","rctd_entropy", "rctd_singlet_scores")] |> as.data.frame()
 
-merged <- df2 |>
-  dplyr::left_join(df1, by = "cell_id")
+merged <- df1 |>
+  dplyr::left_join(df2, by = "cell_id")
 
 colData(tables(x)[[1]]) <- as(merged, "DataFrame")
 ```
@@ -191,7 +193,8 @@ table(x, "d") <- t
 y <- point(x, "c") |> dplyr::filter(feature_name  %in% c("EPCAM", "LUM"))
 # demo. viz. capabilities
 p <- plotSpatialData() + 
-    plotShape(x, i = "a", fill = "transferred_celltype_plot", alpha = 1, linewidth = 0) 
+    plotShape(x, i = "a", fill = "transferred_celltype_plot", alpha = 1, linewidth = 0) +
+   scale_fill_manual(values=unname(pals::trubetskoy()))
 
 q <- plotSpatialData() + 
     plotShape(x, i = "a", fill = "F1_purity", alpha = 1, linewidth = 0) + 
@@ -215,6 +218,91 @@ library(patchwork)
 p
 q
 r
+```
+
+# Reconstruction,  plotting anatomical regions
+
+Here we will use `sosta` to reconstruct the DCIS2 regions, select them and later plot them. We write a little helper function to directly call `sosta` on the `SpatialData` object.
+
+```{r}
+sostaPolygonShape <- function(x, # SD class
+                              shapeName, # name of the shape layer
+                              marks, # mark column of interest
+                              markSelect, # selected mark for reconstruction
+                              dim = 500, # reconstruction dim
+                              ... # other sosta parameters
+                              ){
+ # create the centroids from a shape layer 
+ crd <- st_centroid(shape(x, shapeName)$geometry) |>
+  st_coordinates() 
+ 
+ # select the column data with any relevant metadata
+ cd <- getTable(x, shapeName) |>
+  colData()
+ # combine the crd and the column data
+ pp <- .df2ppp(cbind(crd, cd),
+               xName = colnames(crd)[[1]],
+               yName = colnames(crd)[[2]],
+               marks = marks)
+ # reconstruct the poly
+ poly <- reconstructShapeDensity(pp, markSelect, dim = dim, ...)
+ return(poly)
+}
+```
+
+We will run `sosta` to reconstruct the DCIS2 regions.
+
+```{r}
+res <- sostaPolygonShape(
+ x = x,
+ shapeName = "cell_boundaries",
+ marks = "transferred_celltype_plot",
+ markSelect = "DCIS2"
+)
+```
+
+For illustration we will select the largest to polygons.
+
+```{r}
+resSel <- res[order(st_area(res), decreasing = TRUE)[1:2],]
+```
+
+Now we do a shape query. This accepts also multiple polygons.
+
+```{r}
+shape(x, "a") <- query(shape(x, "cell_boundaries"), resSel)
+shape(x, "b") <- query(shape(x, "nucleus_boundaries"), resSel)
+point(x, "c") <- query(point(x), resSel)
+```
+
+```{r}
+t = tables(x)[[1]]
+t@int_colData$region <- "a"
+t@int_metadata$spatialdata_attrs$region <- "a"
+
+i = int_colData(t)$cell_id %in% shape(x, "a")$cell_id
+t = t[, i]
+
+table(x, "d") <- t
+
+#filter interesting genes
+y <- point(x, "c") |> dplyr::filter(feature_name  %in% c("EPCAM", "LUM"))
+```
+
+For now the `sosta` output is not yet stored in the `SpatialData` object. We will plot it using `geom_sf()`.
+
+```{r}
+# demo. viz. capabilities
+plotSpatialData() + 
+ plotShape(x, i = "a", fill = "transferred_celltype_plot", alpha = 1, linewidth = 0) + 
+ scale_fill_manual(values=unname(pals::trubetskoy())) +
+ new_scale("fill") + 
+ plotShape(x, i = "b", colour = "white", alpha = 0, linewidth = 0) + 
+ new_scale("colour") + 
+ plotPoint(y, colour = "feature_name", size = 0.1) +
+ geom_sf(data = resSel, fill = NA, inherit.aes = FALSE, color = "navy",
+         linewidth = 0.75) +
+ labs(title = "Multipolygon query")
 ```
 
 # Session info
