@@ -95,6 +95,7 @@ hastyDE <- function(y, df) {
 #' @importFrom spdep nb2listw
 #' @importFrom spdep localG
 #' @importFrom stats kmeans
+#' @importFrom cli cli_progress_bar cli_progress_update cli_progress_done
 getPatches <- function(xy, X, npatches,
                        bitesize = 0.1,
                        maxradius = 0.5,
@@ -190,8 +191,8 @@ getPatches <- function(xy, X, npatches,
   }
   
   #### iterations: --------------------------------------------------
+  cli::cli_progress_bar("Computing patches", total = n_iters)
   for (iter in seq_len(n_iters)) {
-    print(iter)
     
     # get patch stats:
     for (name in uniqueseeds) {
@@ -255,7 +256,11 @@ getPatches <- function(xy, X, npatches,
       
       barplot(patchdf$totvar, col = patchcols[rownames(patchdf)], ylim = c(0,1000), ylab = "Predictor sum of squares", xlab = "Patches")
     }
+
+    cli::cli_progress_update()
   }
+  cli::cli_progress_done()
+
   out <- celldf$patch
   names(out) <- rownames(celldf)
   return(out)
