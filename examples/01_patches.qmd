@@ -1,0 +1,108 @@
+---
+title: "Create patches"
+format: html
+editor: visual
+---
+
+## Introduction
+
+This document introduces the first step of the analysis: defining spatial units for downstream testing. The main challenge is that “patches” do not have to be fixed in advance, so the pipeline should stay flexible enough to accept algorithmic patches, manually drawn regions, domains, or cell neighborhoods.
+
+::: callout-important
+**Goals**
+
+-   Build a patch-definition workflow that can use different inputs, including patchDE, SVA, domains, or cell neighborhoods.
+
+-   Compare alternative patching strategies on the two planned datasets, MERFISH MouseColonIBD and CosMx colon cancer.
+
+-   Produce patch-level objects that are ready for differential expression analysis in the next document.
+:::
+
+## Data Preparation
+
+We use the `MouseColonIbdCadinu2024` dataset from the `MerfishData` package. This dataset contains MERFISH data from a mouse model of colon inflammation (DSS treatment).
+
+```{r}
+library(MerfishData)
+library(SpatialExperiment)
+library(InSituCor)
+source("patchDE.R")
+
+# Load the dataset
+spe <- MerfishData::MouseColonIbdCadinu2024()
+colnames(spe) <- paste0("Cell", seq_len(ncol(spe)))
+
+# Choose sample 5 slice 1 (3 days of DSS treatment)
+spe_sub <- spe[, spe$sample_id == 5 & spe$slice_id == 1]
+
+# Get spatial coordinates (convert to mm for patch definition)
+xy <- as.matrix(spatialCoords(spe_sub))
+xy_mm <- xy * 0.000109 # 1 pixel ~ 109 nm
+rownames(xy_mm) <- colnames(spe_sub)
+```
+
+
+## Defining Exposure
+
+Our biological question is: **How do epithelial cells behave in proximity of immune cells?** We define the "exposure" as the number of immune cells in the local neighborhood of each epithelial cell.
+
+```{r}
+# Get spatial neighbors matrix (N=50)
+neighbors <- InSituCor:::nearestNeighborGraph(x = xy[,1], y = xy[,2], N = 50, subset = 1)
+
+# Count neighboring cell types (tier1 classification)
+env <- InSituCor:::neighbor_tabulate(as.vector(spe_sub$tier1), neighbors) 
+rownames(env) <- rownames(xy_mm)
+
+# Focus on Epithelial cells
+is_epithelial <- spe_sub$tier1 == "Epithelial"
+is_MU4 <- spe_sub$leiden_neigh == "MU4"
+X <- env[is_epithelial & is_MU4, "Immune"]
+```
+
+## Patch Creation
+
+We create patches within a specific neighborhood (e.g., "MU4") to control for larger-scale tissue structure, or across all epithelial cells.
+
+```{r}
+# Example: Create patches across all epithelial cells
+n_patches <- 100
+patches <- getPatches(
+    xy = xy_mm[is_epithelial & is_MU4, ],
+    X = X,
+    npatches = n_patches, 
+    maxradius = 0.1, 
+    bitesize = 0.1,
+    effectivezerodist = 0.001,
+    plotprogress = FALSE)
+
+# Store patch assignments in the SpatialExperiment object
+spe_sub$patch <- NA
+spe_sub$patch[is_epithelial & is_MU4] <- patches
+```
+
+
+## Visualization
+
+Visualizing the patches helps confirm they are spatially contiguous and capture regions with varying immune cell exposure.
+
+```{r}
+# Define patch polygons for plotting
+polys <- list()
+use_cells <- which(is_epithelial & !is.na(spe_sub$patch))
+for (p_id in setdiff(unique(spe_sub$patch), NA)) {
+    inds <- which(spe_sub$patch[use_cells] == p_id)
+    if(length(inds) > 3) {
+        polys[[p_id]] <- xy_mm[use_cells, ][inds, ][chull(xy_mm[use_cells, ][inds, ]), ]
+    }
+}
+
+# Plot patches
+plot(xy_mm[is_epithelial, ], pch = 16, cex = 0.5, col = "grey80", main = "Epithelial Patches")
+points(xy_mm[use_cells, ], pch = 16, cex = 0.5, 
+       col = rainbow(n_patches)[as.numeric(as.factor(spe_sub$patch[use_cells]))])
+for (p_id in names(polys)) {
+    polygon(polys[[p_id]], border = "black")
+}
+```
+

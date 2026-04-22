@@ -1,0 +1,167 @@
+---
+title: "meta-analyses"
+format: html
+editor: visual
+---
+
+## **Introduction**
+
+This document summarizes the patch-level DE results and asks whether some groups of patches show a consistent or enriched response. The aim is to move from patch-wise results to higher-level biological patterns across patches and datasets.
+
+::: callout-important
+**Goals.**
+
+-   Identify subgroups of patches enriched for a common DE relationship.
+
+-   Choose and justify meta-analysis strategies that combine evidence across patches.
+
+-   Compare results across the two datasets to see whether the same spatial relationships recur in both systems.
+
+-   Produce a final synthesis that links patch structure, spatial DE, and biological interpretation.
+:::
+
+## Meta-analysis of Patch Results
+
+We combine patch-level DE estimates using inverse-variance weighting. This provides a robust global summary of the effects across the entire tissue sample.
+
+```{r}
+# Extract results for the variable of interest
+res <- de_results$Immune_Exposure
+
+# Use inverse-variance weighting to combine results across patches
+# Calculate meta-estimates and their standard errors
+# Handle cases where SE might be 0 or NA
+metawts <- pmax(res$ses, 0.1)^-1/2
+metaest <- rowSums(res$ests * metawts, na.rm = TRUE) / rowSums(metawts, na.rm = TRUE)
+metaSE <- sqrt(1 / rowSums(metawts))
+
+# Calculate Z-scores and identify consistent genes
+metaZ <- metaest / metaSE
+is_consistent <- abs(metaZ) > 2
+
+# Summary of top consistent genes
+top_genes <- head(sort(abs(metaZ[is_consistent]), decreasing = TRUE))
+```
+
+## Cross-dataset Comparison
+
+By repeating this pipeline on both the CosMx colon cancer and MERFISH MouseColonIBD datasets, we can evaluate whether the response of cells (epithelial or tumor) to immune cell proximity is consistent across different systems and technologies.
+
+```r
+# Example: Overlay meta-results from two datasets to identify common spatial programs
+# common_genes <- intersect(consistent_genes_merfish, consistent_genes_cosmx)
+```
+
+## Visualization of Results
+
+Visualizing the meta-analysis results through heatmaps or volcano plots helps summarize the findings across patches.
+
+### Global Meta-analysis Summary
+A volcano plot of the meta-estimates against the Z-scores identifies genes with the most consistent spatial response across the entire sample.
+
+```{r}
+library(ggplot2)
+
+meta_df <- data.frame(
+  gene = names(metaest),
+  estimate = metaest,
+  zscore = metaZ,
+  consistent = is_consistent
+)
+
+ggplot(meta_df, aes(x = estimate, y = abs(zscore), color = consistent)) +
+  geom_point(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Meta-analysis Volcano Plot",
+       x = "Average Effect Size (Meta-estimate)",
+       y = "|Z-score|") +
+  scale_color_manual(values = c("grey", "red"))
+```
+
+### Patch-level Consistency
+We use a heatmap to inspect the t-statistics of the most consistent genes across all patches. This helps identify if certain patches are driving the global signal or if the effect is truly widespread.
+
+```{r}
+library(pheatmap)
+
+# Calculate t-statistics per patch
+t_stats <- res$ests / res$ses
+t_stats[is.na(t_stats)] <- 0
+
+# Select top consistent genes for the heatmap
+top_consistent_genes <- names(sort(abs(metaZ), decreasing = TRUE))[1:30]
+
+pheatmap(t_stats[top_consistent_genes, ], 
+         color = colorRampPalette(c("blue", "white", "red"))(100),
+         breaks = seq(-5, 5, length.out = 101),
+         main = "Patch-level t-statistics (Top 30 Genes)",
+         show_colnames = FALSE)
+```
+
+### Specific Gene Inspection
+Finally, we can map the expression of a specific gene of interest alongside the patch boundaries and the exposure variable (Immune proximity).
+
+```{r}
+# Example gene of interest
+goi <- "Egr1"
+
+# Create a plotting data frame for cells in patches
+plot_df <- data.frame(
+  x = xy_mm[use, 1],
+  y = xy_mm[use, 2],
+  expression = y[, goi],
+  exposure = df$Immune_Exposure,
+  patch = patch_assignments
+)
+
+# Plot expression in space
+ggplot(plot_df, aes(x = x, y = y, color = expression)) +
+  geom_point(size = 0.5) +
+  scale_color_viridis_c() +
+  theme_void() +
+  labs(title = paste("Spatial Expression of", goi),
+       color = "Logcounts")
+```
+
+### Patch-level Aggregate Visualization
+To better understand the spatial trends across the tissue, we can overlay the patch polygons colored by their aggregated metrics (mean expression, effect size, or t-statistic).
+
+```{r}
+#| label: patch-aggregated-plot
+library(dplyr)
+library(tidyr)
+
+# Prepare aggregate data for the gene of interest (goi)
+patch_metrics <- data.frame(
+  patch = colnames(res$ests),
+  effect_size = res$ests[goi, ],
+  t_stat = res$ests[goi, ] / res$ses[goi, ],
+  mean_expr = sapply(colnames(res$ests), function(p) mean(y[patch_assignments == p, goi]))
+)
+
+# Combine polygons with metrics for ggplot
+# Note: 'polys' must be available (defined in 01_patches.qmd)
+poly_df <- bind_rows(lapply(names(polys), function(p) {
+  as.data.frame(polys[[p]]) %>%
+    mutate(patch = p)
+})) %>%
+  left_join(patch_metrics, by = "patch")
+
+# Plot patches colored by effect size
+ggplot(poly_df, aes(x = x, y = y, group = patch, fill = effect_size)) +
+  geom_polygon(color = "black", size = 0.2) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red") +
+  theme_minimal() +
+  labs(title = paste("Patch-level Effect Size for", goi),
+       fill = "Effect Size",
+       x = "x (mm)", y = "y (mm)")
+
+# Plot patches colored by t-statistic
+ggplot(poly_df, aes(x = x, y = y, group = patch, fill = t_stat)) +
+  geom_polygon(color = "black", size = 0.2) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", limits = c(-5, 5), oob = scales::squish) +
+  theme_minimal() +
+  labs(title = paste("Patch-level T-statistic for", goi),
+       fill = "T-statistic",
+       x = "x (mm)", y = "y (mm)")
+```
