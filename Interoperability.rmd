@@ -1,0 +1,187 @@
+---
+title: "`SpatialData.plot`"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+package: "`r BiocStyle::pkg_ver('SpatialData.plot')`"
+author: 
+  - name: Helena Lucia Crowell
+  - name: Charlotte Soneson
+  - name: Michael Stadler
+  - name: Daria Lazic
+  - name: Samuel Gunz
+  - name: Rafael Irizarry
+  - name: Hugo Gruson
+  - name: Gabriel Grajeda
+  - name: Martin Emons
+output:
+  BiocStyle::html_document
+vignette: |
+  %\VignetteIndexEntry{SpatialData.plot}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=FALSE, message=FALSE, warning=FALSE)
+```
+
+```{r load-libs}
+library(ggplot2)
+library(patchwork)
+library(ggnewscale)
+library(SpatialData)
+library(arrow)
+library(SpatialData.plot)
+library(SingleCellExperiment)
+```
+
+# Introduction
+
+This project is concerned with enhancing the interoperability between `python` and `R`/ `Bicondocutor`. As a use-case we use a `SpatialData` object of breast cancer from Janesick et al. acquired by 10x Genomics Xenium. We load the `SpatialData` object in `python` and run a `python` method on it called `SegTraQ`. 
+
+## Run `python` module `SegTraQ`
+
+```{python run SegTraQ, eval = FALSE}
+import segtraq
+import spatialdata as sd
+
+sdata = sd.read_zarr("xenium.zarr")
+
+st = segtraq.SegTraQ(
+    sdata, images_key="image", tables_centroid_x_key="x_centroid", tables_centroid_y_key="y_centroid"
+)
+
+st.run_baseline()
+
+st.sdata.write("xenium_with_qc.zarr", overwrite=True)
+```
+
+## Run `R` module `spacexr``
+
+With this object we then load the `SpatialData` object in R. We want to compute further metrics in `R` namely the `RCTD` algortihm implemented in `spacexr`.
+
+```{r run RCTD, eval = FALSE}
+library(spacexr)
+library(SummarizedExperiment)
+library(anndataR)
+
+# Read scRNA-seq annotation
+sc_annotation_filepath <- "BC_scRNAseq_Janesick.h5ad"
+sc_annotation <- anndataR::read_h5ad(sc_annotation_filepath, as = "SingleCellExperiment")
+
+
+# Read spatial data
+zarr_filepath <- "xenium_with_qc.zarr"
+spatial_data_filepath <- paste0(zarr_filepath, "/tables/table")
+spatial_data <- read_zarr(spatial_data_filepath, as = "SingleCellExperiment")
+
+# Run RCTD
+rctd_config <- createRctd(spatial_data, sc_annotation, cell_type_col="Annotation", pixel_count_min=0, UMI_min=0)
+rctd_results <- runRctd(rctd_config, rctd_mode="full", max_cores=7, doublet_threshold=0)
+
+# Shannon entropy function: H = -sum(p * log(p))
+entropy <- function(col) {
+  p <- col[col > 0]  # avoid log(0)
+  max(0, -sum(p * log(p)))   # using natural log, clip to zero for numerical errors
+}
+
+# Compute per-cell entropy
+cell_entropies <- apply(
+  as.matrix(assay(rctd_results, "weights_full")),
+  MARGIN = 2,
+  FUN = entropy
+)
+
+# Get numeric positions of RCTD cells within spatial_data
+idx <- match(names(cell_entropies), colnames(spatial_data))
+
+# Drop any NAs (cells in RCTD not found in spatial_data)
+valid <- !is.na(idx)
+
+colData(spatial_data)$rctd_entropy <- rep(NA_real_, ncol(spatial_data))
+colData(spatial_data)$rctd_entropy[idx[valid]] <- cell_entropies[valid]
+
+colData(spatial_data)$rctd_singlet_scores <- rep(NA_real_, ncol(spatial_data))
+colData(spatial_data)$rctd_singlet_scores[idx[valid]] <- rctd_results$singlet_score[valid]
+
+adata <- as_AnnData(spatial_data)
+adata$write_h5ad(
+  "./updated_sdata_xenium_with_rctd.h5ad",
+  mode="w"
+)
+```
+
+we then merge the results into our `SpatialData` `SingleCellExperiment` object
+
+```{r read SpatialData}
+(x <- readSpatialData("~/dev/VeniceHackathon/xenium_with_qc.zarr/", anndataR=TRUE))
+```
+
+```{r, read spacexrResults}
+h5ad_file <- "updated_adata_with_rctd.h5ad"
+sce_obj <- anndataR::read_h5ad(h5ad_file, as = "SingleCellExperiment")
+```
+
+```{r}
+colData(tables(x)[[1]]) <- cbind(colData(tables(x)[[1]]), colData(sce_obj)[c("rctd_entropy", "rctd_singlet_scores")])
+```
+
+## Plot results with `R` package `SpatialData.plot`
+
+### 
+
+In order to plot this we use the `SpatialData.plot` library implemented to interface with the `SpatialData` object
+
+```{r plotPoint, eval=TRUE, fig.width=8, fig.height=2.5}
+y <- x$points$transcripts
+#filter interesting genes
+y <- y |> dplyr::filter(feature_name  %in% c("EPCAM", "LUM"))
+# demo. viz. capabilities
+plotSpatialData() + 
+    plotShape(x, i = "cell_boundaries", fill = "rctd_entropy", alpha = 1, linewidth = 0) + 
+    scale_fill_viridis_c() +
+    #scale_fill_manual(values=unname(pals::trubetskoy())) +
+    new_scale("fill") + 
+    plotShape(x, i = "nucleus_boundaries", color = "white", alpha = 0, linewidth = 0) + 
+    new_scale("fill") + 
+    plotPoint(y, colour = "feature_name", size = 0.3)
+```
+
+```{r}
+bb_xmin = 800
+bb_ymin = 1150
+bb_w = 200
+bb_h = 300
+bb_xmax = bb_xmin + bb_w
+bb_ymax = bb_ymin + bb_h
+bbox <- list(xmin = bb_xmin, xmax = bb_xmax, ymin = bb_ymin, ymax = bb_ymax)
+shape(x, "a") <- query(shape(x, "cell_boundaries"),bbox)
+shape(x, "b") <- query(shape(x, "nucleus_boundaries"),bbox)
+point(x, "c") <- query(point(x),bbox)
+#tables(x, "d") <- query(tables(x),bbox)
+
+t = tables(x)[[1]]
+t@int_colData$region <- "a"
+t@int_metadata$spatialdata_attrs$region <- "a"
+
+i = int_colData(t)$cell_id %in% shape(x, "a")$cell_id
+t = t[, i]
+
+table(x, "d") <- t
+
+#filter interesting genes
+y <- point(x, "c") |> dplyr::filter(feature_name  %in% c("EPCAM", "LUM"))
+# demo. viz. capabilities
+plotSpatialData() + 
+    plotShape(x, i = "a", fill = "rctd_entropy", alpha = 1, linewidth = 0) + 
+    scale_fill_viridis_c() +
+    new_scale("fill") + 
+    plotShape(x, i = "b", colour = "white", alpha = 0, linewidth = 0) + 
+    new_scale("colour") + 
+    plotPoint(y, colour = "feature_name", size = 0.3)
+```
+
+# Session info
+
+```{r sessionInfo, echo=FALSE}
+sessionInfo()
+```
