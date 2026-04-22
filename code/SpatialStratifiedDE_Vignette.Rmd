@@ -52,8 +52,12 @@ library(dplyr)
 library(tidyr)
 library(Matrix)
 library(pheatmap)
+library(ggrepel)
 
 source("patchDE.R")
+
+# Ensure results directory exists
+if (!dir.exists("../results/plots")) dir.create("../results/plots", recursive = TRUE)
 
 # Load the dataset
 spe <- MerfishData::MouseColonIbdCadinu2024()
@@ -72,7 +76,7 @@ rownames(xy_mm) <- colnames(spe_sub)
 
 Before focusing on specific cell types or neighborhoods, we visualize the entire tissue slice to understand its spatial organization.
 
-```{r viz-initial}
+```{r viz-initial, fig.cap="Initial Tissue Exploration"}
 # Prepare data frame for plotting
 full_slice_df <- as.data.frame(xy_mm) %>%
   mutate(
@@ -81,26 +85,29 @@ full_slice_df <- as.data.frame(xy_mm) %>%
   )
 
 # Plot by Cell Type
-ggplot(full_slice_df, aes(x = x, y = y, color = cell_type)) +
+p1 <- ggplot(full_slice_df, aes(x = x, y = y, color = cell_type)) +
   geom_point(size = 0.1, alpha = 0.8) +
   theme_minimal() +
   labs(title = "Tissue Slice by Cell Type",
        color = "Cell Type (Tier 1)",
        x = "x (mm)", y = "y (mm)") +
   guides(color = guide_legend(override.aes = list(size = 2)))
+p1
+ggsave("../results/plots/01_tissue_cell_types.png", p1, width = 8, height = 6)
 
 # Plot by Neighborhood
-ggplot(full_slice_df, aes(x = x, y = y, color = neighborhood)) +
+p2 <- ggplot(full_slice_df, aes(x = x, y = y, color = neighborhood)) +
   geom_point(size = 0.1, alpha = 0.8) +
   theme_minimal() +
   labs(title = "Tissue Slice by Neighborhood",
        color = "Neighborhood (Leiden)",
        x = "x (mm)", y = "y (mm)") +
   guides(color = guide_legend(override.aes = list(size = 2)))
+p2
+ggsave("../results/plots/02_tissue_neighborhoods.png", p2, width = 8, height = 6)
 ```
 
 ## Defining Exposure
-
 
 Our biological question is: **How do epithelial cells behave in proximity of immune cells?** 
 We define the "exposure" as the number of immune cells in the local neighborhood of each epithelial cell.
@@ -141,7 +148,7 @@ spe_sub$patch[is_epithelial & is_MU4] <- patches
 
 ### Visualizing Patches
 
-```{r viz-patches}
+```{r viz-patches, fig.cap="Figure 3: Epithelial Patches in MU4 neighborhood."}
 # Define patch polygons for plotting
 polys <- list()
 use_cells_idx <- which(is_epithelial & is_MU4 & !is.na(spe_sub$patch))
@@ -152,13 +159,19 @@ for (p_id in setdiff(unique(spe_sub$patch), NA)) {
     }
 }
 
+# Prepare df for ggplot
+use_cells_df <- as.data.frame(xy_mm[use_cells_idx, ])
+use_cells_df$patch <- as.factor(spe_sub$patch[use_cells_idx])
+
 # Plot patches
-plot(xy_mm[is_epithelial & is_MU4, ], pch = 16, cex = 0.5, col = "grey80", main = "Epithelial Patches (MU4)")
-points(xy_mm[use_cells_idx, ], pch = 16, cex = 0.5, 
-       col = rainbow(n_patches)[as.numeric(as.factor(spe_sub$patch[use_cells_idx]))])
-for (p_id in names(polys)) {
-    polygon(polys[[p_id]], border = "black")
-}
+p3 <- ggplot(use_cells_df, aes(x = x, y = y)) +
+  geom_point(data = as.data.frame(xy_mm[is_epithelial & is_MU4, ]), aes(x = x, y = y), color = "grey80", size = 0.5) +
+  geom_point(aes(color = patch), size = 0.5) +
+  theme_minimal() +
+  labs(title = "Epithelial Patches (MU4)", x = "x (mm)", y = "y (mm)") +
+  theme(legend.position = "none") # Too many patches for a legend
+p3
+ggsave("../results/plots/03_epithelial_patches.png", p3, width = 8, height = 6)
 ```
 
 ---
@@ -217,17 +230,15 @@ metaP <- 2 * pnorm(abs(metaZ), lower.tail = FALSE)
 logP <- -log10(pmax(metaP, 1e-20)) # Cap for plotting
 
 # Top consistent genes (by significance)
-is_consistent <- abs(metaZ) > 3 # Using a more stringent threshold for "top"
+is_consistent <- abs(metaZ) > 3 
 top_genes_names <- names(sort(abs(metaZ), decreasing = TRUE))[1:10]
 ```
 
 ### Global Summary (Volcano Plot)
 
-A volcano plot identifies genes with the most consistent spatial response across all patches. The x-axis represents the weighted average effect size (meta-estimate), while the y-axis shows the statistical significance (-log10 meta p-value). Genes in the top-left or top-right corners are those that show a strong, consistent relationship with immune cell proximity across the tissue.
+A volcano plot identifies genes with the most consistent spatial response across all patches. The x-axis represents the weighted average effect size (meta-estimate), while the y-axis shows the statistical significance (-log10 meta p-value). 
 
-```{r volcano, fig.cap="Figure 1: Meta-analysis volcano plot. Red points indicate genes with a highly consistent spatial response (|Z| > 3)."}
-library(ggrepel)
-
+```{r volcano, fig.cap="Figure 4: Meta-analysis volcano plot. Red points indicate genes with a highly consistent spatial response (|Z| > 3)."}
 meta_df <- data.frame(
   gene = names(metaest),
   estimate = metaest,
@@ -236,7 +247,7 @@ meta_df <- data.frame(
   label = ifelse(names(metaest) %in% top_genes_names, names(metaest), "")
 )
 
-ggplot(meta_df, aes(x = estimate, y = logP, color = abs(zscore) > 3)) +
+p4 <- ggplot(meta_df, aes(x = estimate, y = logP, color = abs(zscore) > 3)) +
   geom_point(alpha = 0.4) +
   geom_text_repel(aes(label = label), size = 3, min.segment.length = 0, max.overlaps = 20) +
   theme_minimal() +
@@ -247,13 +258,15 @@ ggplot(meta_df, aes(x = estimate, y = logP, color = abs(zscore) > 3)) +
        color = "|Z| > 3") +
   scale_color_manual(values = c("grey70", "firebrick")) +
   theme(legend.position = "bottom")
+p4
+ggsave("../results/plots/04_volcano_plot.png", p4, width = 8, height = 6)
 ```
 
 ### Patch-level Consistency (Heatmap)
 
-This heatmap displays the t-statistics for the top 30 most consistent genes across every individual patch. It allows us to verify if a "consistent" gene (from the meta-analysis) is truly showing a similar trend in every patch or if the global signal is driven by a few outlier regions.
+This heatmap displays the t-statistics for the top 30 most consistent genes across every individual patch. It allows us to verify if a "consistent" gene is truly showing a similar trend in every patch.
 
-```{r heatmap, fig.cap="Figure 2: Heatmap of patch-level t-statistics for the top 30 consistent genes."}
+```{r heatmap, fig.cap="Figure 5: Heatmap of patch-level t-statistics for the top 30 consistent genes."}
 # Calculate t-statistics per patch
 t_stats <- res$ests / res$ses
 t_stats[is.na(t_stats)] <- 0
@@ -261,18 +274,21 @@ t_stats[is.na(t_stats)] <- 0
 # Select top 30 consistent genes
 top_consistent_genes <- names(sort(abs(metaZ), decreasing = TRUE))[1:30]
 
-pheatmap(t_stats[top_consistent_genes, ], 
+p5 <- pheatmap(t_stats[top_consistent_genes, ], 
          color = colorRampPalette(c("blue", "white", "red"))(100),
          breaks = seq(-5, 5, length.out = 101),
          main = "Patch-level t-statistics (Top 30 Genes)",
-         show_colnames = FALSE)
+         show_colnames = FALSE, silent = TRUE)
+grid::grid.newpage()
+grid::grid.draw(p5$gtable)
+ggsave("../results/plots/05_heatmap_consistency.png", p5$gtable, width = 10, height = 8)
 ```
 
 ### Specific Gene Inspection: `Egr1`
 
-The `Egr1` (Early Growth Response 1) gene is a known transcription factor involved in cellular responses to environmental stimuli. In our context, we are investigating if its expression in epithelial cells is modulated by the density of nearby immune cells.
+The `Egr1` (Early Growth Response 1) gene is a known transcription factor involved in cellular responses to environmental stimuli.
 
-```{r egr1-spatial, fig.cap="Figure 3: Spatial expression of Egr1 in epithelial cells (log-normalized counts)."}
+```{r egr1-spatial, fig.cap="Figure 6: Spatial expression of Egr1 in epithelial cells (log-normalized counts)."}
 goi <- "Egr1"
 
 # Plot expression in space
@@ -282,21 +298,23 @@ plot_df <- data.frame(
   expression = y[, goi]
 )
 
-ggplot(plot_df, aes(x = x, y = y, color = expression)) +
+p6 <- ggplot(plot_df, aes(x = x, y = y, color = expression)) +
   geom_point(size = 0.5) +
   scale_color_viridis_c() +
   theme_void() +
   labs(title = paste("Spatial Expression of", goi),
        color = "Logcounts")
+p6
+ggsave("../results/plots/06_egr1_spatial.png", p6, width = 8, height = 6)
 ```
 
 ### Patch-level Aggregate Visualization
 
 By aggregating data at the patch level, we reduce noise and can clearly visualize the "spatial effect" (t-statistic) across the tissue architecture. 
 
-**Interpretation:** If `Egr1` is consistently upregulated in proximity to immune cells, we expect to see the majority of patches colored in red (positive t-statistic). If the effect is localized to specific tissue regions, only certain clusters of patches will show high values.
+**Interpretation:** If `Egr1` is consistently upregulated in proximity to immune cells, we expect to see the majority of patches colored in red (positive t-statistic).
 
-```{r patch-agg-viz, fig.cap="Figure 4: Patch-level t-statistics for Egr1. Red indicates a positive correlation between Egr1 expression and immune proximity."}
+```{r patch-agg-viz, fig.cap="Figure 7: Patch-level t-statistics for Egr1. Red indicates a positive correlation between Egr1 expression and immune proximity."}
 # Prepare aggregate data for Egr1
 patch_metrics <- data.frame(
   patch = colnames(res$ests),
@@ -313,7 +331,7 @@ poly_df <- bind_rows(lapply(names(polys), function(p) {
   left_join(patch_metrics, by = "patch")
 
 # Plot patches colored by T-statistic
-ggplot(poly_df, aes(x = x, y = y, group = patch, fill = t_stat)) +
+p7 <- ggplot(poly_df, aes(x = x, y = y, group = patch, fill = t_stat)) +
   geom_polygon(color = "black", size = 0.2) +
   scale_fill_gradient2(low = "blue", mid = "white", high = "red", 
                        limits = c(-5, 5), oob = scales::squish) +
@@ -321,5 +339,6 @@ ggplot(poly_df, aes(x = x, y = y, group = patch, fill = t_stat)) +
   labs(title = paste("Patch-level T-statistic for", goi),
        fill = "T-statistic",
        x = "x (mm)", y = "y (mm)")
+p7
+ggsave("../results/plots/07_egr1_patch_tstat.png", p7, width = 8, height = 6)
 ```
-
