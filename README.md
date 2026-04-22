@@ -13,3 +13,5 @@ In the process of building this vignette we updated several key components of bo
 - lazy queries of `SpatialData` objects such as a bounding-box with `duckspatial`
 - updating `SpatialData.plot` to work on `geom_sf` in response to the `SpatialData` changes. 
 - enabling plotting of multichannel images in `SpatialData.plot`
+
+[click me](http://htmlpreview.github.io/?https://github.com/HelenaLC/VeniceInterop/blob/main/Interoperability.html)
