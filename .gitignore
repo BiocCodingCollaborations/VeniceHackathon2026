@@ -1,5 +1,7 @@
 data/
 data.*/
 inst/compare_formats.R
+inst/.ipynb_checkpoints/
+inst/scratch.ipynb
 .RData
 .Rhistory

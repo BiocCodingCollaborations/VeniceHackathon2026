@@ -21,7 +21,7 @@ compute_eccentricity <- function(rows, cols) {
   sqrt(1 - (minor / major))
 }
 
-regionprops <- function(labels, intensity) {
+regionprops <- function(labels, intensity = labels > 0) {
   ids <- sort(unique(as.vector(labels)))
   ids <- ids[ids > 0]
 
