@@ -95,6 +95,7 @@ hastyDE <- function(y, df) {
 #' @importFrom spdep nb2listw
 #' @importFrom spdep localG
 #' @importFrom stats kmeans
+#' @importFrom cli cli_progress_bar cli_progress_update cli_progress_done
 getPatches <- function(xy, X, npatches,
                        bitesize = 0.1,
                        maxradius = 0.5,
@@ -105,6 +106,11 @@ getPatches <- function(xy, X, npatches,
                        effectivezerodist = 0.025,
                        plotprogress = FALSE) {
   
+  stopifnot(nrow(xy) == length(X)) ## QC
+  stopifnot(!is.null(rownames(xy))) ## QC
+  stopifnot(!is.null(names(X))) ## QC
+  stopifnot(all(rownames(xy) == names(X))) ## QC
+
   #### preliminaries --------------------------------------
   # scale X:
   X <- X / sd(X, na.rm = TRUE)
@@ -145,19 +151,31 @@ getPatches <- function(xy, X, npatches,
 
   # intialize patch df:
   uniqueseeds <- setdiff(seeds, NA)
-  patchdf <- data.frame(totvar = rep(NA, length(uniqueseeds)),
-                        hunger = rep(NA, length(uniqueseeds)))
+  ## for patches with fewer than 2 cells 'totvar' and 'hunger' will be zero
+  patchdf <- data.frame(totvar = rep(0, length(uniqueseeds)),
+                        hunger = rep(0, length(uniqueseeds)))
+  ## patchdf <- data.frame(totvar = rep(NA, length(uniqueseeds)),
+  ##                       hunger = rep(NA, length(uniqueseeds)))
   rownames(patchdf) = uniqueseeds
   
   # get patch centroids:
   centroids <- c()
   for (name in unique(seeds)) {
-    centroids <- rbind(centroids, colMeans(xy[(seeds == name) & !is.na(seeds), ]))
+    centroids <- rbind(centroids, colMeans(xy[(seeds == name) & !is.na(seeds), , drop=FALSE]))
+    ## centroids <- rbind(centroids, colMeans(xy[(seeds == name) & !is.na(seeds), ]))
   }
   rownames(centroids) = unique(seeds)
   
   # get each cell's distance to each patch:
-  cell2patchproximity <- getproximity2patch(xy, centroids, celldf$patch, bitesize = bitesize, effectivezerodist = effectivezerodist, maxradius = maxradius, roundness = roundness)
+  cell2patchproximity <- getproximity2patch(xy, centroids, celldf$patch,
+                                            bitesize = bitesize,
+                                            effectivezerodist = effectivezerodist,
+                                            maxradius = maxradius, roundness = roundness)
+
+  ## reduce patches to those with proximity info 
+  patchdf <- patchdf[rownames(patchdf) %in% colnames(cell2patchproximity), , drop=FALSE]
+
+  stopifnot(nrow(patchdf) == ncol(cell2patchproximity)) ## QC
 
   # which cells are just too far to assign:
   celldf$toofar <- Matrix::rowSums(cell2patchproximity != 0) == 0
@@ -173,26 +191,46 @@ getPatches <- function(xy, X, npatches,
   }
   
   #### iterations: --------------------------------------------------
+  cli::cli_progress_bar("Computing patches", total = n_iters)
   for (iter in seq_len(n_iters)) {
-    print(iter)
     
     # get patch stats:
     for (name in uniqueseeds) {
-      patchdf[name, "totvar"] <- var(celldf$X[celldf$patch == name], na.rm = T) * sum(celldf$patch == name, na.rm = T)
+      if (sum(celldf$patch == name, na.rm = TRUE) > 1) ## need at least 2 cells to get a variance estimate
+        patchdf[name, "totvar"] <- var(celldf$X[celldf$patch == name], na.rm = T) * sum(celldf$patch == name, na.rm = T)
     }
-    patchdf[, "hunger"] <- 1 / ((1 - alpha) * mean(patchdf[, "totvar"]) + alpha * patchdf[, "totvar"])
-    patchdf$hunger <- patchdf$hunger / sum(patchdf$hunger)
+    ## discard NA values from mean calculation and guard against undefined mean and zero division
+    mean_totvar <- mean(patchdf[, "totvar"], na.rm=TRUE)
+    if (!is.finite(mean_totvar))
+      mean_totvar <- 0
+    hunger_denom <- (1 - alpha) * mean_totvar + alpha * patchdf[, "totvar"]
+    patchdf[, "hunger"] <- ifelse(is.finite(hunger_denom) & hunger_denom > 0,
+                                  1 / hunger_denom, 0)
+    ## patchdf[, "hunger"] <- 1 / ((1 - alpha) * mean(patchdf[, "totvar"]) + alpha * patchdf[, "totvar"])
+    ## discard NA values from sum calculation and guard against zero division
+    total_hunger <- sum(patchdf$hunger, na.rm=TRUE)
+    if (is.finite(total_hunger) && total_hunger > 0)
+      patchdf$hunger <- patchdf$hunger / total_hunger
+    ## patchdf$hunger <- patchdf$hunger / sum(patchdf$hunger)
     
+    ## reduce patches to those with proximity info 
+    patchdf <- patchdf[rownames(patchdf) %in% colnames(cell2patchproximity), , drop=FALSE]
+
+    stopifnot(all(rownames(patchdf) %in% colnames(cell2patchproximity))) ## QC
+    idx <- apply(cell2patchproximity[, rownames(patchdf)] %*% diag(patchdf$hunger), 1,
+                 which.max)
     # add cells to nearest (hunger-weighted) patch:
-    celldf$patch <- rownames(patchdf)[
-      apply(cell2patchproximity[, rownames(patchdf)] %*% diag(patchdf$hunger), 1, which.max)]
+    celldf$patch <- rownames(patchdf)[idx]
     celldf$patch[celldf$toofar] = NA
     
     # update patch centroids:
     centroids <- c()
     patchnames <- setdiff(unique(celldf$patch), NA)
     for (name in patchnames) {
-      centroids <- rbind(centroids, colMeans(xy[(celldf$patch == name) & !is.na(celldf$patch), ]))
+      stopifnot(sum((celldf$patch == name) & !is.na(celldf$patch)) > 0) ## QC
+      ## do not drop dimensions
+      centroids <- rbind(centroids, colMeans(xy[(celldf$patch == name) & !is.na(celldf$patch), , drop=FALSE]))
+      ## centroids <- rbind(centroids, colMeans(xy[(celldf$patch == name) & !is.na(celldf$patch), ]))
     }
     rownames(centroids) = patchnames
     
@@ -200,10 +238,15 @@ getPatches <- function(xy, X, npatches,
     cell2patchproximity <- getproximity2patch(xy, centroids, 
                                               patch = celldf$patch, 
                                               bitesize = bitesize, 
-                                              effectivezerodist, 
                                               maxradius = maxradius,
-                                              roundness = roundness)
+                                              roundness = roundness,
+                                              effectivezerodist = effectivezerodist)
     celldf$toofar <- Matrix::rowSums(cell2patchproximity != 0) == 0
+
+    ## reduce patches to those with proximity info 
+    patchdf <- patchdf[rownames(patchdf) %in% colnames(cell2patchproximity), , drop=FALSE]
+
+    stopifnot(nrow(patchdf) == ncol(cell2patchproximity)) ## QC
     
     # plot:
     if (plotprogress) {
@@ -213,7 +256,11 @@ getPatches <- function(xy, X, npatches,
       
       barplot(patchdf$totvar, col = patchcols[rownames(patchdf)], ylim = c(0,1000), ylab = "Predictor sum of squares", xlab = "Patches")
     }
+
+    cli::cli_progress_update()
   }
+  cli::cli_progress_done()
+
   out <- celldf$patch
   names(out) <- rownames(celldf)
   return(out)
@@ -242,7 +289,10 @@ getproximity2patch <- function(xy, centroids, patch,
   centroiddistmat <- matrix(NA, nrow(xy), length(patchnames),
                             dimnames = list(rownames(xy), patchnames))
   for (name in patchnames) {
-    centroiddistmat[, name] <- sqrt((xy[, 1] - centroids[name, 1])^2 + (xy[, 2] - centroids[name, 2])^2)
+    ## clamp distances to prevent zeros, which would result below in infinite proximities
+    edist <- sqrt((xy[, 1] - centroids[name, 1])^2 + (xy[, 2] - centroids[name, 2])^2)
+    centroiddistmat[, name] <- pmax(edist, effectivezerodist)
+    ## centroiddistmat[, name] <- sqrt((xy[, 1] - centroids[name, 1])^2 + (xy[, 2] - centroids[name, 2])^2)
   }
   
   # dist to any cells in patch:
@@ -262,7 +312,7 @@ getproximity2patch <- function(xy, centroids, patch,
 
   # convert to proximity: 
   proxmat <- 1 / bigdist
-  
+
   # censor cells that are too far:
   proxmat[anydistmat > bitesize] <- 0
   proxmat[centroiddistmat[rownames(anydistmat), colnames(anydistmat)] > maxradius] <- 0
