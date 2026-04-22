@@ -111,14 +111,18 @@ Or similarly, we could identify patches/subgroups where the DE results are most 
 
 ## Results
 
-Successful definition of small patches retaining adequate statistical power:
+### getPatches successfully defines small patches retaining adequate statistical power:
 
+<img width="1098" height="669" alt="image" src="https://github.com/user-attachments/assets/8b9f7912-7a94-4741-afa5-ae866a737d3a" />
 
-Local meta-analysis obtains high-confidence results from individually under-powered patches:
+Results from the first and final iterations are shown. Top panels show patch footprints; bottom panels show each patch's sum of squares of X, which determines statistical power. 
 
-<img width="1624" height="726" alt="image" src="https://github.com/user-attachments/assets/10c0d67a-021b-4339-a6b2-ca5ad6cb05cf" />
+### Local meta-analysis obtains high-confidence results from individually under-powered patches:
 
+<img width="1652" height="825" alt="image" src="https://github.com/user-attachments/assets/9aff4652-a142-49a1-a016-1879394a2718" />
 
+Example per-patch DE results from a single gene. Polygon color shows (left) t statistics from within-patch DE results and (right) Z statistics from per-patch metaanalysis results. 
+Yellow points indicate p < 0.05 patches.
 
 
 ## Next steps / missing pieces:
