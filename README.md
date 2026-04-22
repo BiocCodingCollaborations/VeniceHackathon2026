@@ -1,8 +1,6 @@
 # SpatialStratifiedDE
 
-[![Bioconductor Hackathon 2026](https://img.shields.io/badge/Hackathon-Bioconductor%20Venice%202026-blue)](https://github.com/mcalgaro93/SpatialStratifiedDE)
-
-A framework for spatially stratified differential expression analysis, developed during the [Bioconductor Venice Hackathon 2026](https://github.com/BiocCodingCollaborations/VeniceHackathon2026).
+A framework for spatially stratified differential expression analysis, developed during the [VeniceHackathon2026](https://github.com/BiocCodingCollaborations/VeniceHackathon2026).
 
 ## Overview
 
@@ -14,7 +12,7 @@ Traditional differential expression (DE) testing in spatial transcriptomics ofte
 
 ## Repository Structure
 
-Following R/Bioconductor project best practices, the repository is organized as follows:
+The repository is organized as follows:
 
 -   `R/`: Contains core function definitions (e.g., `getPatches`, `patchDE`).
 -   `vignettes/`: A comprehensive case study and walkthrough using MERFISH data.
@@ -23,15 +21,7 @@ Following R/Bioconductor project best practices, the repository is organized as 
 
 ## Installation
 
-To explore this project, clone the repository and ensure you have the necessary dependencies:
-
-```r
-# Required R packages
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-
-BiocManager::install(c("MerfishData", "SpatialExperiment", "InSituCor", "ggrepel", "pheatmap"))
-```
+To explore this project, clone the repository and ensure you have the necessary dependencies.
 
 ## Quick Start
 
@@ -55,13 +45,10 @@ Identifies biologically similar patches and combines their results to produce pr
 
 This project was a collaborative effort during the Bioconductor Venice Hackathon 2026:
 
--   **Patrick Danaher** ([@pdanaher](https://github.com/pdanaher)) - Lead methodology and core R development.
--   **Matteo Calgaro** ([@mcalgaro93](https://github.com/mcalgaro93)) - Implementation, workflow design, and repository management.
--   **Robert Castelo** ([@rcastelo](https://github.com/rcastelo)) - Code review and optimization.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details (or standard hackathon terms).
+-   **Patrick Danaher** ([@pdanaher](https://github.com/pdanaher))
+-   **Matteo Calgaro** ([@mcalgaro93](https://github.com/mcalgaro93))
+-   **Robert Castelo** ([@rcastelo](https://github.com/rcastelo))
+-   **Pere Moles Serò** ([@peremoles](https://github.com/peremoles))
 
 ---
 
