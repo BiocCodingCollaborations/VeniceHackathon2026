@@ -63,7 +63,7 @@ This does constrain patches' ability to maximize statistical power, but we hypot
 2. **Stratified DE**. 
 
 For each patch, we take two steps. 
-First, we transform its raw counts into Pearson residuals. 
+First, we plan to transform its raw counts into Pearson residuals. 
 (Whole tissue-level Pearson residuals are a large dense matrix, usually too big to fit into memory, 
 so we calculate them on the fly for each patch.)
 Second, we use a single matrix multiplication call to perform OLS simultaneously for all genes,
