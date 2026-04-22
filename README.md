@@ -109,6 +109,14 @@ Or similarly, we could identify patches/subgroups where the DE results are most 
 - Cluster patches into groups with similar DE results
 - Associate per-patch DE results with relevant variables, e.g. pathologist annotations of tissue regions, or local cell type abundance...
 
+## Results
+
+Successful definition of small patches retaining adequate statistical power:
+
+
+
+
+
 ## Next steps / missing pieces:
 
 Methods:
