@@ -19,3 +19,60 @@ This document focuses on differential expression within patches while accounting
 
 -   Check residual spatial autocorrelation after modeling to see whether the spatial structure has really been removed.
 :::
+
+## Normalization and Data Subset
+
+Prior to differential expression analysis, we normalize the raw counts. We focus on epithelial cells that are part of a defined patch.
+
+```{r}
+library(Matrix)
+source("patchDE.R")
+
+# Use logcounts from SpatialExperiment object if available, otherwise normalize
+# counts <- assay(spe_sub, "counts")
+# norm <- log1p(sweep(counts, 2, colSums(counts)/1e4, "*"))
+norm <- assay(spe_sub, "logcounts")
+
+# Subset for epithelial cells in patches
+is_epithelial <- spe_sub$tier1 == "Epithelial"
+is_MU4 <- spe_sub$leiden_neigh == "MU4"
+in_patch <- !is.na(spe_sub$patch)
+use <- is_epithelial & is_MU4 & in_patch
+
+# Logcounts matrix (cells x genes) for patchDE
+y <- t(as.matrix(norm[, use]))
+```
+
+
+## Patch-wise Differential Expression
+
+We perform differential expression analysis within each patch using the `patchDE` function. This function uses a fast linear regression approach (`hastyDE`) across each patch.
+
+```{r}
+# Define design matrix (e.g., exposure variable)
+df <- data.frame(Immune_Exposure = env[use, "Immune"])
+patch_assignments <- spe_sub$patch[use]
+
+# Run DE across all patches
+de_results <- patchDE(y = y, 
+                      df = df, 
+                      patch = patch_assignments)
+
+# Example: Result for a specific gene across all patches
+gene_interest <- "Tnf"
+res_Tnf <- data.frame(
+    est = de_results$Immune_Exposure$ests[gene_interest, ],
+    p = de_results$Immune_Exposure$pvals[gene_interest, ],
+    se = de_results$Immune_Exposure$ses[gene_interest, ]
+)
+```
+
+
+## Spatially Aware Modeling (Future Work)
+
+The `patchDE` function currently uses a simple linear model within each patch. In more advanced analyses, we can compare these results with models that explicitly include a spatial correlation structure (e.g., Gaussian Process) to determine if local autocorrelation still influences the results after patching.
+
+``` r
+# Note: Further investigation into residual spatial autocorrelation 
+# can be performed using Moran's I on model residuals.
+```
