@@ -151,6 +151,20 @@ patches <- getPatches(xy = xy[use, ],
 #saveRDS(patches, file = "processed/patches1000.RDS")
 patches <- readRDS("processed/patches500.RDS")
 
+# split patches:
+patches2 <- patches
+subclusterK <- 5
+for (patch in setdiff(unique(patches), NA)) {
+  inds <- (patches == patch) & !is.na(patches)
+  # subcluster:
+  temp <- kmeans(x = xy[use, ][inds, ], centers = subclusterK)
+  patches2[inds] <- paste0(patch, "_", temp$cluster)
+}
+patches0 <- patches
+patches <- patches2
+toofew <- names(which(table(patches) < 5))
+patches[is.element(patches, toofew)] <- NA
+
 # define patch polygons:
 polys <- list()
 for (patch in setdiff(unique(patches), NA)) {
@@ -159,8 +173,13 @@ for (patch in setdiff(unique(patches), NA)) {
 }
 
 
-plot(xy[use, ], pch = 16, cex = 0.1, col = "grey80")
-points(xy[use, ], pch = 16, cex = 0.1, col = rep(cellcols,100)[as.numeric(as.factor(patches))])
+plot(xy[use, ], pch = 16, cex = 0.1, col = "grey80", asp = 1)
+points(xy[use, ], pch = 16, cex = 0.1, col = rep(cellcols,1000)[as.numeric(as.factor(patches))])
+
+
+plot(xy, pch = 16, cex = 0.5, col = c("grey80", "red", "dodgerblue")[1 + (inds.t) + 2*(inds.tumor)],
+     asp = 1, xlim = c(7,8), ylim = c(12,13))
+legend("topleft", pch =16, col = c("red", "dodgerblue"), legend = c("T cells", "epithelial cells"))
 
 # subcluster each patch to make it small?
 
@@ -178,9 +197,9 @@ res <- patchDE(y = norm[use, ], #[, cancergenes],
                df = data.frame("dist2tcell" = dist2tcell[use]),
                patch = patches)
 str(res)
-saveRDS(res, file = "processed/res500.RDS")
+saveRDS(res, file = "processed/res2500.RDS")
 
-res <- readRDS("processed/res500.RDS")
+res <- readRDS("processed/res2500.RDS")
 
 #### get summary stats: ------------------------------------------
 
@@ -340,22 +359,47 @@ for (gene in genes) {
 
 
 # plot patches in space:
-par(mfrow = c(1,2))
-par(mar = c(0,0,2,0))
 subinds <- sample(1:nrow(xy), 20000)
 for (gene in genes[1:4]) {
+  png(paste0("results/metaanalysis of ", gene, ".png"), width = 10, height = 5, units = "in", res = 300)
+  par(mfrow = c(1,2))
+  par(mar = c(0,0,2,0))
   plot(xy[subinds, ], col = "grey80", pch = 16, cex = 0.1, asp = 1, 
+       xaxt = "n", yaxt = "n",
        main = paste0(gene, " per-patch t-statistic"))
   for (patch in names(polys)) {
-    polygon(polys[[patch]], border = "black",
-            col = colorRampPalette(c("darkblue", "blue", "white", "red", "darkred"))(101)[
-              pmax(1, pmin(101, 51 + 50 * ts[gene, patch] / 10))])
+    thispatchcol <- colorRampPalette(c("darkblue", "blue", "grey80", "red", "darkred"))(101)[
+      pmax(1, pmin(101, 51 + 50 * ts[gene, patch] / 10))]
+    polygon(polys[[patch]], border = thispatchcol,
+            col = scales::alpha(thispatchcol, 0.75))
+    if (abs(ts[gene, patch]) > 2) {
+      points(median(xy[use, 1][patches == patch]), 
+             median(xy[use, 2][patches == patch]),
+             pch = 16, col = "yellow", cex = 0.25)
+    }
   }
   plot(xy[subinds, ], col = "grey80", pch = 16, cex = 0.1, asp = 1,  
+       xaxt = "n", yaxt = "n",
        main = paste0(gene, " per-patch metaanalysis Z-score"))
   for (patch in names(polys)) {
-    polygon(polys[[patch]], border = "black",
-            col = colorRampPalette(c("darkblue", "blue", "white", "red", "darkred"))(101)[
-              pmax(1, pmin(101, 51 + 50 * patchmetaZ[patch, gene] / 10))])
+    thispatchcol <- colorRampPalette(c("darkblue", "blue", "grey80", "red", "darkred"))(101)[
+      pmax(1, pmin(101, 51 + 50 * patchmetaZ[patch, gene] / 10))]
+    polygon(polys[[patch]], border = thispatchcol,
+            col = scales::alpha(thispatchcol, 0.75))
+    if (abs(patchmetaZ[patch, gene]) > 2) {
+      points(median(xy[use, 1][patches == patch], na.rm = TRUE), 
+             median(xy[use, 2][patches == patch], na.rm = TRUE),
+             pch = 16, col = "yellow", cex = 0.25)
+    }
   }
+  legend("topright", pch = 16, col = "yellow", legend = "p < 0.05")
+  dev.off()
 }
+
+
+# snapshot for exploratory analyses:
+save(xy, polys, ts, patchmetaZ, res, file = "results to explore.RData")
+
+
+#### exploratory plots ----------------------------------------
+
