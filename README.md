@@ -63,7 +63,7 @@ This does constrain patches' ability to maximize statistical power, but we hypot
 2. **Stratified DE**. 
 
 For each patch, we take two steps. 
-First, we transform its raw counts into Pearson residuals. 
+First, we plan to transform its raw counts into Pearson residuals. 
 (Whole tissue-level Pearson residuals are a large dense matrix, usually too big to fit into memory, 
 so we calculate them on the fly for each patch.)
 Second, we use a single matrix multiplication call to perform OLS simultaneously for all genes,
@@ -108,6 +108,22 @@ Or similarly, we could identify patches/subgroups where the DE results are most 
 - Cluster genes into modules with similar DE results
 - Cluster patches into groups with similar DE results
 - Associate per-patch DE results with relevant variables, e.g. pathologist annotations of tissue regions, or local cell type abundance...
+
+## Results
+
+### getPatches successfully defines small patches retaining adequate statistical power:
+
+<img width="1098" height="669" alt="image" src="https://github.com/user-attachments/assets/8b9f7912-7a94-4741-afa5-ae866a737d3a" />
+
+Results from the first and final iterations are shown. Top panels show patch footprints; bottom panels show each patch's sum of squares of X, which determines statistical power. 
+
+### Local meta-analysis obtains high-confidence results from individually under-powered patches:
+
+<img width="1652" height="825" alt="image" src="https://github.com/user-attachments/assets/9aff4652-a142-49a1-a016-1879394a2718" />
+
+Example per-patch DE results from a single gene. Polygon color shows (left) t statistics from within-patch DE results and (right) Z statistics from per-patch metaanalysis results. 
+Yellow points indicate p < 0.05 patches.
+
 
 ## Next steps / missing pieces:
 
