@@ -1,0 +1,36 @@
+{
+  "sjoin_suggestions": [
+    [
+      {"sdata": "sdata_qc",  "element": "cell_boundaries"},
+      {"sdata": "sdata_xe1", "element": "cell_boundaries"}
+    ],
+    [
+      {"sdata": "sdata_xe1", "element": "cell_boundaries"},
+      {"sdata": "sdata_xe2", "element": "cell_boundaries"}
+    ],
+    [
+      {"sdata": "sdata_ann", "element": "rois"},
+      {"sdata": "sdata_xe1", "element": "cell_boundaries"}
+    ],
+    [
+      {"sdata": "sdata_ann", "element": "rois"},
+      {"sdata": "sdata_xe2", "element": "cell_boundaries"}
+    ],
+    [
+      {"sdata": "sdata_ann", "element": "rois"},
+      {"sdata": "sdata_vis", "element": "CytAssist_FFPE_Human_Breast_Cancer"}
+    ]
+  ],
+  "element_relationships": [
+    {
+      "comment": "Materialized spatial join: xe1 vs xe2 cell boundaries (1-to-1 mapping via index)",
+      "elements": [
+        {"sdata": "sdata_xe1", "element": "cell_boundaries", "join_strategy": "index"},
+        {"sdata": "sdata_xe2", "element": "cell_boundaries", "join_strategy": "index"}
+      ],
+      "metaLabel": "index / index",
+      "statsLabel": "1,245 / 1,563",
+      "orderLabel": "≋ diff order"
+    }
+  ]
+}

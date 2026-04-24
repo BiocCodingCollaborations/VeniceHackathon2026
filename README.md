@@ -1,5 +1,16 @@
 # Hackathon on spatial omics <br> and image-derived data
 
+Participants created and worked in four teams comprising:
+
+- Image and segmentation data manipulation and visualization
+- Facilitating use of spatial foundation models for the Bioconductor community
+- Spatially stratified differential expression analysis
+- Enhanced infrastructure and interoperability for spatial data in Bioconductor
+
+***
+
+## Pre-hackathon information
+
 - 19-22 April, 2026
 - [San Servolo, Italy](https://servizimetropolitani.ve.it/en/san-servolo-island/where-we-are)
 
