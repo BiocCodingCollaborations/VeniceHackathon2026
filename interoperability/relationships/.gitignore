@@ -1,7 +1,0 @@
-.DS_Store
-.idea/
-__pycache__/
-node_modules/
-data/
-*.zarr
-*.zarr.zip
