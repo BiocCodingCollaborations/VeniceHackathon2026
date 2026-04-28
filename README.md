@@ -4,8 +4,8 @@ Participants created and worked in four teams comprising:
 
 - Spatially stratified differential expression analysis
 - `segmentation-analysis`: Image and segmentation data manipulation and visualization
-- `pretrainedmodels/`: Facilitating use of spatial foundation models for the Bioconductor community
-- `interoperability/`: Enhanced infrastructure and interoperability for spatial data in Bioconductor
+- `pretrainedmodels`: Facilitating use of spatial foundation models for the Bioconductor community
+- `interoperability`: Enhanced infrastructure and interoperability for spatial data in Bioconductor
 
 ***
 
