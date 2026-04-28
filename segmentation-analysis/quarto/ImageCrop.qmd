@@ -1,0 +1,149 @@
+---
+title: "Crop image"
+format: html
+author: "Davide Risso"
+---
+
+# Setup
+
+```{r setup}
+library(ImageArray)
+library(RBioFormats)
+library(ggplot2)
+```
+
+# Read tiff image
+
+```{r tiff}
+ome.tiff.file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.ome.tiff"
+read.metadata(ome.tiff.file)
+
+imgarray <- createImageArray(ome.tiff.file, series = 1, resolution = 1)
+imgarray
+```
+
+# Crop
+
+```{r crop}
+roi <- list(xmin = 5000, ymin = 17000, xmax = 6000, ymax = 18000)
+
+imgarray_sub <- crop(imgarray, index = list(roi$xmin:roi$xmax, roi$ymin:roi$ymax, NULL))
+
+img_raster <- as.raster(imgarray_sub, max.pixel.size = 100)
+
+plot(img_raster)
+
+ggplot(data.frame(x = 0, y = 0), aes(x, y)) +
+  coord_fixed(expand = FALSE,
+              xlim = c(0, dim(img_raster)[2]),
+              ylim = c(0, dim(img_raster)[1])) +
+  annotation_raster(img_raster, 
+                    0, dim(img_raster)[2],
+                    dim(img_raster)[1], 0, interpolate = FALSE)
+```
+
+Alternative way: terra.
+
+```{r terra}
+library(terra)
+
+rasterized <- rast(ome.tiff.file)
+plot(rasterized)
+
+sub_img <- terra::crop(rasterized, ext(roi$xmin, roi$xmax, roi$ymin, roi$ymax))
+sub_img
+
+plot(sub_img)
+```
+
+# Read zarr image
+
+Let's try to do the same but starting from a Zarr file.
+
+```{r zarr}
+library(ZarrArray)
+zarr_file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.zarr/images/images/0"
+
+A <- ZarrArray(zarr_file)
+is(A, "DelayedArray")
+
+img_cropped <- A[1:3, (roi$ymin):(roi$ymax), (roi$xmin):(roi$xmax)]
+
+img_array <- as.array(img_cropped)
+img_array <- aperm(img_array, c(2, 3, 1))
+sub_img2 <- rast(img_array)
+RGB(sub_img2) <- 1:3
+
+plot(sub_img2)
+```
+
+It looks mirrored in the y axis, but that's just a convention from the Python zarr file (I think).
+
+# Read GeoParquet
+
+We can use `duckspatial` to read the GeoParquet file and crop it to the same coordinates as the image. This is efficient as it only reads the polygons that intersect with the crop area.
+
+```{r duckspatial}
+library(duckdb)
+library(duckspatial)
+library(duckplyr)
+library(sf)
+
+parquet_file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.parquet"
+
+# Open dataset
+ddbs <- ddbs_open_dataset(parquet_file)
+
+# Define bounding box for cropping
+stbbox <- st_bbox(c(xmin = roi$xmin, xmax = roi$xmax,
+                    ymin = roi$ymin, ymax = roi$ymax))
+wkb_string <- st_as_text(st_as_sfc(stbbox))
+
+# Filter and load as sf object
+polygons_sub <- ddbs |>
+  filter(ST_Intersects(ST_GeomFromText(wkb_string), geometry)) |>
+  st_as_sf()
+
+polygons_sub
+
+# Plot polygons
+ggplot() +
+  geom_sf(data = polygons_sub) +
+  geom_sf(data = st_as_sfc(stbbox), fill = NA) +
+  theme_minimal() +
+  labs(title = "Cropped GeoParquet Polygons")
+```
+
+# Overlay Image and Polygons
+
+```{r overlay}
+# Ensure we only have 3 channels (RGB)
+sub_img_3ch <- sub_img[[1:3]]
+
+# Set RGB channels for base plot
+RGB(sub_img_3ch) <- 1:3
+plotRGB(sub_img_3ch)
+plot(st_geometry(polygons_sub), add = TRUE, border = "white", lwd = 0.5)
+
+# For ggplot2, we need a single-layer raster of hex colors.
+# We manually convert to an array and scale to [0, 1] for as.raster()
+img_arr <- as.array(sub_img_3ch)
+
+# Scale values to [0, 1] if they aren't already
+img_min <- min(img_arr, na.rm = TRUE)
+img_max <- max(img_arr, na.rm = TRUE)
+img_arr_scaled <- (img_arr - img_min) / (img_max - img_min)
+
+# as.raster() on a (H, W, 3) array produces the correct hex-encoded matrix
+sub_img_raster_obj <- as.raster(img_arr_scaled)
+
+ggplot() +
+  annotation_raster(sub_img_raster_obj, 
+                    roi$xmin, roi$xmax,
+                    roi$ymax, roi$ymin, interpolate = FALSE) +
+  geom_sf(data = polygons_sub, fill = "white", color = "white", alpha = 0.5) +
+  coord_sf(xlim = c(roi$xmin, roi$xmax), ylim = c(roi$ymin, roi$ymax), expand = FALSE) +
+  theme_minimal() +
+  labs(title = "Overlay: Terra Image and Segmentation")
+```
+

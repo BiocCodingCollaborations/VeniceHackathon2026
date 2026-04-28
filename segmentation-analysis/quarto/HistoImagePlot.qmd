@@ -1,0 +1,55 @@
+---
+title: "Histo Image Plot"
+author: "Davide Risso"
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Setup
+
+```{r setup}
+library(imageFeatureTCGA)
+library(HistoImagePlot)
+library(dplyr)
+library(SpatialExperiment)
+library(ggplot2)
+```
+
+# Import HD5 file
+
+```{r import}
+hov_file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.h5ad.gz"
+hn <- HoverNet(hov_file, outClass = "SpatialExperiment")
+hn_spe <- import(hn)
+```
+
+# Overlay
+
+```{r thmb}
+thmb_path <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.png"
+plotHoverNetH5ADOverlay(hn_spe, thmb_path)
+```
+
+# Subset
+
+```{r subset}
+roi <- as.list(2*c(xmin = 4000, ymin = 15000, xmax = 6000, ymax = 18000))
+
+crop <- spatialCoords(hn_spe)[,1] <= roi$xmax & spatialCoords(hn_spe)[,1] >= roi$xmin & spatialCoords(hn_spe)[,2] <= roi$ymax & spatialCoords(hn_spe)[,2] >= roi$ymin
+
+table(crop)
+
+spe_small <- hn_spe[,which(crop)]
+
+```
+
+# Import JSON file
+
+```{r json, eval=FALSE}
+hov_file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.json"
+hn <- HoverNet(hov_file, outClass = "SpatialExperiment")
+hn_spe2 <- import(hn)
+```
+
