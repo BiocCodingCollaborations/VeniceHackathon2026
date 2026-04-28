@@ -1,0 +1,64 @@
+<svg width="800" height="300" viewBox="0 0 800 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="800" height="300" fill="#ffffff" />
+  
+  <!-- Panel 1: Patching -->
+  <g transform="translate(50, 50)">
+    <text x="0" y="-10" font-family="Arial" font-weight="bold" font-size="16" fill="#333">1. Power-Balanced Patching</text>
+    <!-- Tissue Shape -->
+    <path d="M10,10 Q50,0 90,20 T170,40 T150,120 T80,150 T20,100 Z" fill="#f0f0f0" stroke="#ccc" stroke-width="2" />
+    <!-- Mosaic Polygons -->
+    <path d="M40,30 L70,25 L85,55 L55,70 Z" fill="#66c2a5" opacity="0.6" stroke="#fff" />
+    <path d="M70,25 L110,20 L130,50 L85,55 Z" fill="#fc8d62" opacity="0.6" stroke="#fff" />
+    <path d="M55,70 L85,55 L100,90 L60,110 Z" fill="#8da0cb" opacity="0.6" stroke="#fff" />
+    <path d="M10,60 L55,70 L60,110 L20,100 Z" fill="#e78ac3" opacity="0.6" stroke="#fff" />
+    <!-- Movement arrows -->
+    <path d="M85,55 L95,45" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)" />
+  </g>
+
+  <!-- Arrow -->
+  <g transform="translate(240, 120)">
+    <path d="M0,0 L40,0" stroke="#999" stroke-width="4" marker-end="url(#arrowhead)" />
+    <text x="-10" y="25" font-family="Arial" font-size="12" fill="#666">hastyDE</text>
+  </g>
+
+  <!-- Panel 2: Local Analysis -->
+  <g transform="translate(320, 50)">
+    <text x="0" y="-10" font-family="Arial" font-weight="bold" font-size="16" fill="#333">2. Stratified Inference</text>
+    <rect width="180" height="150" rx="10" fill="#fff" stroke="#eee" stroke-width="2" />
+    <!-- Mini Plot -->
+    <line x1="30" y1="120" x2="150" y2="120" stroke="#333" />
+    <line x1="30" y1="120" x2="30" y2="40" stroke="#333" />
+    <circle cx="50" cy="100" r="3" fill="#66c2a5" />
+    <circle cx="70" cy="80" r="3" fill="#66c2a5" />
+    <circle cx="100" cy="70" r="3" fill="#66c2a5" />
+    <circle cx="130" cy="50" r="3" fill="#66c2a5" />
+    <line x1="40" y1="110" x2="140" y2="45" stroke="red" stroke-width="2" stroke-dasharray="4" />
+    <text x="50" y="140" font-family="Arial" font-size="10" fill="#666">Exposure vs Expression</text>
+  </g>
+
+  <!-- Arrow -->
+  <g transform="translate(530, 120)">
+    <path d="M0,0 L40,0" stroke="#999" stroke-width="4" marker-end="url(#arrowhead)" />
+    <text x="-15" y="25" font-family="Arial" font-size="12" fill="#666">Meta-analysis</text>
+  </g>
+
+  <!-- Panel 3: Global Result -->
+  <g transform="translate(600, 50)">
+    <text x="0" y="-10" font-family="Arial" font-weight="bold" font-size="16" fill="#333">3. Confident Result</text>
+    <!-- Tissue Shape again, colored by significance -->
+    <path d="M10,10 Q50,0 90,20 T170,40 T150,120 T80,150 T20,100 Z" fill="#f0f0f0" stroke="#ccc" stroke-width="2" />
+    <!-- High confidence patches -->
+    <path d="M40,30 L70,25 L85,55 L55,70 Z" fill="red" opacity="0.8" stroke="#fff" />
+    <path d="M70,25 L110,20 L130,50 L85,55 Z" fill="red" opacity="0.4" stroke="#fff" />
+    <path d="M55,70 L85,55 L100,90 L60,110 Z" fill="red" opacity="0.9" stroke="#fff" />
+    <text x="20" y="170" font-family="Arial" font-size="11" fill="#d00" font-style="italic">Robust spatial gradients</text>
+  </g>
+
+  <!-- Arrowhead definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#999" />
+    </marker>
+  </defs>
+</svg>
