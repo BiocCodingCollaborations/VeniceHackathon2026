@@ -1,0 +1,542 @@
+---
+title: "Compute mean intensity per polygon"
+format: html
+author: Davide Risso
+---
+
+# Setup
+
+```{r setup}
+library(Rarr)
+library(ZarrArray)
+library(sf)
+library(ggplot2)
+library(duckspatial)
+
+sf::sf_use_s2(FALSE)
+```
+
+# Read files
+
+## Read Zarr
+
+```{r readin}
+zarr_file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.zarr/images/images/0"
+
+A <- ZarrArray::ZarrArray(zarr_file)
+is(A, "DelayedArray")
+zarray_info <- Rarr::zarr_overview(zarr_file, as_data_frame = TRUE)
+Rarr::zarr_overview(zarr_file)
+```
+
+## Read parquet
+
+```{r parquet}
+poly_crs <- 4326   # CRS for polygon coordinates (pixel space, no units)
+img_shape_scale <- 1
+
+# polys stays as a lazy duckspatial table — never fully materialised
+polys <- duckspatial::ddbs_open_dataset(
+    "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.parquet",
+    crs = poly_crs
+)
+```
+
+# Extract chunk information
+
+Extract chunk geometry from the Zarr metadata.
+
+```{r firstchunk}
+img_shape   <- zarray_info$dim[[1]]      # e.g. [33776, 46030] or [3, 33776, 46030]
+chunk_shape <- zarray_info$chunk_dim[[1]]     # e.g. [1024, 1024]   or [1, 1024, 1024]
+
+# Determine which axes are spatial (Y and X). Adjust indices if multichannel.
+# Assumption: last two axes are Y (rows) and X (cols).
+n_dims  <- length(img_shape)
+y_ax    <- n_dims - 1   # 1-based index for Rarr slice (n_dims - 1 + 1 = n_dims... see below)
+x_ax    <- n_dims
+
+img_h   <- img_shape[n_dims - 1]    # total height in pixels
+img_w   <- img_shape[n_dims]        # total width  in pixels
+chunk_h <- chunk_shape[n_dims - 1]
+chunk_w <- chunk_shape[n_dims]
+```
+
+Build a grid of chunks.
+
+```{r grid}
+# Grid of chunk origins (1-based R indices, top-left corner of each chunk)
+row_origins <- seq(1, img_h, by = chunk_h)
+col_origins <- seq(1, img_w, by = chunk_w)
+chunk_grid <- expand.grid(row0 = row_origins, col0 = col_origins)
+```
+
+## Focus on third chunk
+
+First two chunks are empty (?), let's look at the third chunk.
+
+```{r subset}
+row0 <- chunk_grid$row0[3]
+col0 <- chunk_grid$col0[3]
+
+# Pixel bounding box of this chunk (1-based R indices, inclusive)
+row1 <- min(row0 + chunk_h - 1, img_h)
+col1 <- min(col0 + chunk_w - 1, img_w)
+
+# Subset polygons for the third chunk.
+image_roi <- c(xmin = col0 - 1, ymin = row0 - 1, 
+               xmax = col1, ymax = row1)
+shape_roi <- image_roi*img_shape_scale
+chunk_bbox <- st_bbox(shape_roi, crs = st_crs(poly_crs))
+
+chunk_sf <- st_sf(geom = st_as_sfc(chunk_bbox))
+
+chunk_polys <- ddbs_filter(polys, chunk_sf) |> ddbs_collect()
+chunk_polys
+```
+
+Compute per-polygon mean intensity for the third chunk. The image chunk is read once, then reused for both the RGB background and the per-channel extraction.
+
+```{r third-chunk-mean-intensity}
+plot_roi <- as.list(image_roi)
+
+# Single image read for this chunk: [C, Y, X].
+third_chunk <- as.array(A[1:3, row0:row1, col0:col1])
+third_chunk_yxc <- base::aperm(third_chunk, c(2, 3, 1))
+
+# Scale a separate view for RGB plotting without changing the statistic values.
+third_chunk_rgb <- third_chunk_yxc
+storage.mode(third_chunk_rgb) <- "double"
+
+if (max(third_chunk_rgb, na.rm = TRUE) > 1) {
+  third_chunk_rgb <- third_chunk_rgb / 255
+}
+
+third_chunk_raster <- as.raster(third_chunk_rgb)
+
+point_in_polygon <- function(px, py, vx, vy) {
+  inside <- rep(FALSE, length(px))
+  j <- length(vx)
+
+  for (i in seq_along(vx)) {
+    crosses <- (vy[i] > py) != (vy[j] > py)
+    if (any(crosses)) {
+      x_cross <- (vx[j] - vx[i]) * (py[crosses] - vy[i]) /
+        (vy[j] - vy[i]) + vx[i]
+      inside[crosses] <- xor(inside[crosses], px[crosses] < x_cross)
+    }
+    j <- i
+  }
+
+  inside
+}
+
+polygon_channel_means <- function(poly, chunk, row0, row1, col0, col1) {
+  bbox <- sf::st_bbox(poly)
+  n_channels <- dim(chunk)[1]
+  empty <- list(n_pixels = 0L, means = rep(NA_real_, n_channels))
+
+  col_start <- max(col0, floor(bbox[["xmin"]]) + 1L)
+  col_end <- min(col1, ceiling(bbox[["xmax"]]))
+  row_start <- max(row0, floor(bbox[["ymin"]]) + 1L)
+  row_end <- min(row1, ceiling(bbox[["ymax"]]))
+
+  if (col_start > col_end || row_start > row_end) {
+    return(empty)
+  }
+
+  cols <- seq.int(col_start, col_end)
+  rows <- seq.int(row_start, row_end)
+
+  centers <- expand.grid(
+    col = cols,
+    row = rows,
+    KEEP.OUT.ATTRS = FALSE
+  )
+  px <- centers$col - 0.5
+  py <- centers$row - 0.5
+
+  coords <- as.data.frame(sf::st_coordinates(poly))
+  part_id <- if ("L3" %in% names(coords)) coords$L2 else rep(1L, nrow(coords))
+  ring_id <- if ("L1" %in% names(coords)) coords$L1 else rep(1L, nrow(coords))
+
+  inside <- rep(FALSE, nrow(centers))
+  for (part in unique(part_id)) {
+    in_part <- rep(FALSE, nrow(centers))
+    part_rows <- part_id == part
+    rings <- unique(ring_id[part_rows])
+
+    for (ring in rings) {
+      ring_rows <- part_rows & ring_id == ring
+      ring_inside <- point_in_polygon(
+        px,
+        py,
+        coords$X[ring_rows],
+        coords$Y[ring_rows]
+      )
+
+      if (ring == 1L) {
+        in_part <- ring_inside
+      } else {
+        in_part <- in_part & !ring_inside
+      }
+    }
+
+    inside <- inside | in_part
+  }
+
+  if (!any(inside)) {
+    return(empty)
+  }
+
+  local_rows <- centers$row[inside] - row0 + 1L
+  local_cols <- centers$col[inside] - col0 + 1L
+
+  means <- vapply(seq_len(n_channels), function(channel) {
+    vals <- chunk[cbind(rep.int(channel, length(local_rows)), local_rows, local_cols)]
+    mean(vals, na.rm = TRUE)
+  }, numeric(1))
+
+  list(n_pixels = length(local_rows), means = means)
+}
+
+channel_cols <- paste0("channel_", seq_len(dim(third_chunk)[1]))
+intensity_list <- lapply(seq_len(nrow(chunk_polys)), function(i) {
+  stats <- polygon_channel_means(
+    chunk_polys[i, ],
+    third_chunk,
+    row0,
+    row1,
+    col0,
+    col1
+  )
+  out <- data.frame(
+    polygon_id = i,
+    n_pixels = stats$n_pixels,
+    stringsAsFactors = FALSE
+  )
+  out[channel_cols] <- as.list(stats$means)
+  out
+})
+
+chunk_intensity <- do.call(rbind, intensity_list)
+chunk_intensity$mean_intensity <- rowMeans(
+  chunk_intensity[, channel_cols, drop = FALSE],
+  na.rm = TRUE
+)
+chunk_intensity$mean_intensity[chunk_intensity$n_pixels == 0L] <- NA_real_
+
+# Match ggplot display coordinates: raster row 1 is drawn at the top, while
+# segmentation y coordinates are image pixel coordinates increasing down.
+chunk_polys_plot <- chunk_polys
+sf::st_geometry(chunk_polys_plot) <-
+  sf::st_geometry(chunk_polys_plot) *
+  matrix(c(1, 0, 0, -1), 2, 2) +
+  c(0, plot_roi$ymin + plot_roi$ymax)
+
+chunk_polys_plot$polygon_id <- seq_len(nrow(chunk_polys_plot))
+chunk_polys_intensity <- chunk_polys_plot
+matched <- match(chunk_polys_intensity$polygon_id, chunk_intensity$polygon_id)
+for (nm in c("n_pixels", channel_cols, "mean_intensity")) {
+  chunk_polys_intensity[[nm]] <- chunk_intensity[[nm]][matched]
+}
+
+head(chunk_intensity)
+
+ggplot() +
+#  annotation_raster(
+#    third_chunk_raster,
+#    xmin = plot_roi$xmin,
+#    xmax = plot_roi$xmax,
+#    ymin = plot_roi$ymin,
+#    ymax = plot_roi$ymax,
+#    interpolate = FALSE
+#  ) +
+  geom_sf(
+    data = chunk_polys_intensity,
+    aes(fill = mean_intensity),
+    color = "black",
+    linewidth = 0.05,
+    alpha = 0.75
+  ) +
+  scale_fill_viridis_c(
+    option = "magma",
+    na.value = "transparent",
+    name = "Mean intensity"
+  ) +
+  coord_sf(
+    xlim = c(plot_roi$xmin, plot_roi$xmax),
+    ylim = c(plot_roi$ymin, plot_roi$ymax),
+    expand = FALSE,
+    datum = NA
+  ) +
+  theme_void() +
+  labs(title = "Third Zarr Chunk: Polygons Colored by Mean Intensity")
+```
+
+# Iterate over all chunks
+
+The same chunk-first strategy can be extended to the full image. Each Zarr
+chunk is read at most once, polygons are restricted to the pixel centers inside
+that chunk, and per-polygon sums are accumulated across chunks before the final
+means are computed.
+
+```{r all-chunks-mean-intensity}
+rm(
+  list = intersect(
+    c("third_chunk", "third_chunk_yxc", "third_chunk_rgb", "third_chunk_raster"),
+    ls()
+  )
+)
+invisible(gc())
+
+parquet_file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.parquet"
+channel_index <- seq_len(img_shape[1])
+channel_cols <- paste0("channel_", channel_index)
+n_channels <- length(channel_index)
+
+if (!exists("point_in_polygon")) {
+  point_in_polygon <- function(px, py, vx, vy) {
+    inside <- rep(FALSE, length(px))
+    j <- length(vx)
+
+    for (i in seq_along(vx)) {
+      crosses <- (vy[i] > py) != (vy[j] > py)
+      if (any(crosses)) {
+        x_cross <- (vx[j] - vx[i]) * (py[crosses] - vy[i]) /
+          (vy[j] - vy[i]) + vx[i]
+        inside[crosses] <- xor(inside[crosses], px[crosses] < x_cross)
+      }
+      j <- i
+    }
+
+    inside
+  }
+}
+
+polygon_channel_sums <- function(poly, chunk, row0, row1, col0, col1) {
+  bbox <- sf::st_bbox(poly)
+  empty <- list(n_pixels = 0L, sums = rep(0, dim(chunk)[1]))
+
+  col_start <- max(col0, floor(bbox[["xmin"]]) + 1L)
+  col_end <- min(col1, ceiling(bbox[["xmax"]]))
+  row_start <- max(row0, floor(bbox[["ymin"]]) + 1L)
+  row_end <- min(row1, ceiling(bbox[["ymax"]]))
+
+  if (col_start > col_end || row_start > row_end) {
+    return(empty)
+  }
+
+  centers <- expand.grid(
+    col = seq.int(col_start, col_end),
+    row = seq.int(row_start, row_end),
+    KEEP.OUT.ATTRS = FALSE
+  )
+  px <- centers$col - 0.5
+  py <- centers$row - 0.5
+
+  coords <- as.data.frame(sf::st_coordinates(poly))
+  part_id <- if ("L3" %in% names(coords)) coords$L2 else rep(1L, nrow(coords))
+  ring_id <- if ("L1" %in% names(coords)) coords$L1 else rep(1L, nrow(coords))
+
+  inside <- rep(FALSE, nrow(centers))
+  for (part in unique(part_id)) {
+    in_part <- rep(FALSE, nrow(centers))
+    part_rows <- part_id == part
+    rings <- unique(ring_id[part_rows])
+
+    for (ring in rings) {
+      ring_rows <- part_rows & ring_id == ring
+      ring_inside <- point_in_polygon(
+        px,
+        py,
+        coords$X[ring_rows],
+        coords$Y[ring_rows]
+      )
+
+      if (ring == 1L) {
+        in_part <- ring_inside
+      } else {
+        in_part <- in_part & !ring_inside
+      }
+    }
+
+    inside <- inside | in_part
+  }
+
+  if (!any(inside)) {
+    return(empty)
+  }
+
+  local_rows <- centers$row[inside] - row0 + 1L
+  local_cols <- centers$col[inside] - col0 + 1L
+
+  sums <- vapply(seq_len(dim(chunk)[1]), function(channel) {
+    vals <- chunk[cbind(rep.int(channel, length(local_rows)), local_rows, local_cols)]
+    sum(vals, na.rm = TRUE)
+  }, numeric(1))
+
+  list(n_pixels = length(local_rows), sums = sums)
+}
+
+con <- DBI::dbConnect(duckdb::duckdb())
+invisible(DBI::dbExecute(con, "LOAD spatial"))
+
+invisible(DBI::dbExecute(
+  con,
+  paste0(
+    "CREATE TEMP TABLE polygons_indexed AS ",
+    "SELECT CAST(row_number() OVER () AS INTEGER) AS polygon_id, * ",
+    "FROM read_parquet(", DBI::dbQuoteString(con, parquet_file), ")"
+  )
+))
+
+n_polygons <- as.integer(DBI::dbGetQuery(
+  con,
+  "SELECT count(*) AS n FROM polygons_indexed"
+)$n)
+
+pixel_counts <- integer(n_polygons)
+channel_sums <- matrix(
+  0,
+  nrow = n_polygons,
+  ncol = n_channels,
+  dimnames = list(NULL, channel_cols)
+)
+
+pb <- utils::txtProgressBar(min = 0, max = nrow(chunk_grid), style = 3)
+
+for (chunk_i in seq_len(nrow(chunk_grid))) {
+  utils::setTxtProgressBar(pb, chunk_i)
+
+  row0_i <- chunk_grid$row0[chunk_i]
+  col0_i <- chunk_grid$col0[chunk_i]
+  row1_i <- min(row0_i + chunk_h - 1L, img_h)
+  col1_i <- min(col0_i + chunk_w - 1L, img_w)
+
+  chunk_roi <- c(
+    xmin = col0_i - 1L,
+    ymin = row0_i - 1L,
+    xmax = col1_i,
+    ymax = row1_i
+  )
+  chunk_wkt <- sf::st_as_text(sf::st_as_sfc(sf::st_bbox(chunk_roi)))
+
+  chunk_sql <- paste0(
+    "SELECT polygon_id, geometry ",
+    "FROM polygons_indexed ",
+    "WHERE ST_Intersects(ST_GeomFromText(",
+    DBI::dbQuoteString(con, chunk_wkt),
+    "), geometry)"
+  )
+  chunk_tbl <- DBI::dbGetQuery(con, chunk_sql)
+
+  if (nrow(chunk_tbl) == 0L) {
+    next
+  }
+
+  chunk_polys_i <- sf::st_sf(
+    chunk_tbl["polygon_id"],
+    geometry = sf::st_as_sfc(
+      structure(chunk_tbl$geometry, class = "WKB"),
+      EWKB = TRUE,
+      crs = poly_crs
+    )
+  )
+
+  # Read this Zarr chunk exactly once, then discard it before the next chunk.
+  chunk_data <- as.array(A[channel_index, row0_i:row1_i, col0_i:col1_i])
+
+  for (poly_i in seq_len(nrow(chunk_polys_i))) {
+    polygon_id <- chunk_polys_i$polygon_id[poly_i]
+    partial <- polygon_channel_sums(
+      chunk_polys_i[poly_i, ],
+      chunk_data,
+      row0_i,
+      row1_i,
+      col0_i,
+      col1_i
+    )
+
+    if (partial$n_pixels == 0L) {
+      next
+    }
+
+    pixel_counts[polygon_id] <- pixel_counts[polygon_id] + partial$n_pixels
+    channel_sums[polygon_id, ] <- channel_sums[polygon_id, ] + partial$sums
+  }
+
+  rm(chunk_data, chunk_polys_i, chunk_tbl)
+  invisible(gc(FALSE))
+}
+
+close(pb)
+
+has_pixels <- pixel_counts > 0L
+all_chunk_intensity <- data.frame(
+  polygon_id = which(has_pixels),
+  n_pixels = pixel_counts[has_pixels],
+  channel_sums[has_pixels, , drop = FALSE] /
+    pixel_counts[has_pixels],
+  row.names = NULL
+)
+all_chunk_intensity$mean_intensity <- rowMeans(
+  all_chunk_intensity[, channel_cols, drop = FALSE],
+  na.rm = TRUE
+)
+
+polygon_attrs <- DBI::dbGetQuery(
+  con,
+  paste(
+    "SELECT polygon_id, type_id, type_prob, magnification, scale_factor,",
+    "minx, miny, maxx, maxy",
+    "FROM polygons_indexed"
+  )
+)
+
+all_chunk_intensity <- merge(
+  polygon_attrs,
+  all_chunk_intensity,
+  by = "polygon_id",
+  all.y = TRUE
+)
+
+DBI::dbDisconnect(con, shutdown = TRUE)
+
+head(all_chunk_intensity)
+```
+
+```{r plot_all}
+ggplot(all_chunk_intensity, aes(minx, miny, color=channel_1)) +
+  geom_point(size=0.1) +
+  scale_color_viridis_c(
+    option = "magma",
+    na.value = "transparent",
+    name = "Mean intensity"
+  ) +
+  theme_void()
+
+ggplot(all_chunk_intensity, aes(minx, miny, color=channel_2)) +
+  geom_point(size=0.1) +
+  scale_color_viridis_c(
+    option = "magma",
+    na.value = "transparent",
+    name = "Mean intensity"
+  ) +
+  theme_void()
+
+ggplot(all_chunk_intensity, aes(minx, miny, color=channel_3)) +
+  geom_point(size=0.1) +
+  scale_color_viridis_c(
+    option = "magma",
+    na.value = "transparent",
+    name = "Mean intensity"
+  ) +
+  theme_void()
+
+library(terra)
+ome.tiff.file <- "../data/TCGA-02-0001-01Z-00-DX1.83fce43e-42ac-4dcd-b156-2908e75f2e47.ome.tiff"
+rasterized <- rast(ome.tiff.file)
+plot(rasterized)
+
+```
