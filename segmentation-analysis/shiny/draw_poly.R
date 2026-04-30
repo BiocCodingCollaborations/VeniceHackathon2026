@@ -1,4 +1,6 @@
 ## run shiny assuming images and polygons are aligned
+library(tidyverse)
+library(tidyterra)
 library(terra)
 library(sf)
 library(ggspatial)
