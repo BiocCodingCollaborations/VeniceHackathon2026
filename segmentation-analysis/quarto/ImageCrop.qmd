@@ -143,7 +143,7 @@ ggplot() +
                     roi$ymax, roi$ymin, interpolate = FALSE) +
   geom_sf(data = polygons_sub, fill = "white", color = "white", alpha = 0.5) +
   coord_sf(xlim = c(roi$xmin, roi$xmax), ylim = c(roi$ymin, roi$ymax), expand = FALSE) +
-  theme_minimal() +
+  theme_void() +
   labs(title = "Overlay: Terra Image and Segmentation")
 ```
 
