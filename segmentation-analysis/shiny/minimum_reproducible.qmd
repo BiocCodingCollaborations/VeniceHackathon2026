@@ -1,0 +1,74 @@
+---
+title: "minimum reproducible example"
+format: html
+author: "Carissa Chen"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+setwd("../VeniceHackathon2026/segmentation-analysis")
+here::i_am("shiny/minimum_reproducible.qmd")
+here()
+```
+
+# load packages
+```{r}
+library(MerfishData)
+library(ExperimentHub)
+library(terra)
+library(tidyterra)
+library(ggspatial)
+library(duckspatial)
+library(duckplyr)
+library(duckdb)
+ddbs_options(mode = "duckspatial")
+```
+
+# get data
+```{r}
+eh <- ExperimentHub()
+
+# transcript file
+mol.dat <- eh[["EH7543"]]
+mol.sf <- ddbs_as_points(mol.dat, coords = c("x_pixel", "y_pixel"), crs=NA)
+
+# membrane stain
+mem.img <- eh[["EH7545"]]
+
+img_to_rast <- function(img, frame = 1) {
+  r <- terra::rast(aperm(img[,,frame, drop=FALSE], c(2,1,3)))  # store as (y,x,c)
+  r <- terra::flip(r, direction = "vertical")
+  r
+}
+mem.rast <- img_to_rast(mem.img) # match orientation of molecular data
+plot(mem.rast)
+```
+
+# call shiny app
+```{r}
+source(here("shiny", "draw_poly.R"))
+poly <- draw_poly(mem.rast)
+```
+
+# visualise
+```{r}
+poly.vect <- terra::vect(poly)
+rast.sub <- terra::crop(mem.rast, poly.vect, mask = TRUE)
+ggplot() +
+  geom_spatraster(data= rast.sub, maxcell=224*224) + # set lower resolution to speed up plotting
+  scale_fill_viridis_c() 
+
+# layer transcripts on top
+mol.sub <- ddbs_filter(mol.sf, poly, predicate = "within") |>
+           ddbs_collect(as = "sf") |>
+           mutate(x_pixel = sf::st_coordinates(geometry)[, 1],
+                  y_pixel = sf::st_coordinates(geometry)[, 2])
+
+ggplot() +
+  geom_spatraster(data= rast.sub, maxcell=224*224) +
+  geom_point(data = mol.sub, aes(x=x_pixel, y=y_pixel, color=gene), size=0.1, alpha=0.2) +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
